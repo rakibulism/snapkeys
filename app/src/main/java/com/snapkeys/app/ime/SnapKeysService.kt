@@ -16,6 +16,7 @@ import com.snapkeys.app.data.ShortcutStore
 class SnapKeysService : InputMethodService(), KeyboardView.Listener {
 
     private lateinit var engine: ExpansionEngine
+    private var keyboardView: KeyboardView? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -33,8 +34,28 @@ class SnapKeysService : InputMethodService(), KeyboardView.Listener {
         reloadShortcuts()
     }
 
+    override fun onStartInputView(editorInfo: EditorInfo?, restarting: Boolean) {
+        super.onStartInputView(editorInfo, restarting)
+        updateAutoShift()
+    }
+
     override fun onCreateInputView(): View {
-        return KeyboardView(this).also { it.listener = this }
+        return KeyboardView(this).also {
+            it.listener = this
+            keyboardView = it
+        }
+    }
+
+    /**
+     * Gboard-style auto-capitalization: raise shift whenever the editor says
+     * the cursor sits where a capital is expected (sentence start etc.).
+     */
+    private fun updateAutoShift() {
+        val view = keyboardView ?: return
+        val ic = currentInputConnection ?: return
+        val inputType = currentInputEditorInfo?.inputType ?: 0
+        val caps = inputType != 0 && ic.getCursorCapsMode(inputType) != 0
+        view.setAutoShift(caps)
     }
 
     // region KeyboardView.Listener
@@ -50,14 +71,17 @@ class SnapKeysService : InputMethodService(), KeyboardView.Listener {
                 ic.deleteSurroundingText(expansion.deleteBefore, 0)
                 ic.commitText(expansion.insert, 1)
                 ic.endBatchEdit()
+                updateAutoShift()
                 return
             }
         }
         ic.commitText(c.toString(), 1)
+        updateAutoShift()
     }
 
     override fun onText(text: String) {
         currentInputConnection?.commitText(text, 1)
+        updateAutoShift()
     }
 
     override fun onBackspace() {
@@ -77,6 +101,7 @@ class SnapKeysService : InputMethodService(), KeyboardView.Listener {
             else -> 1
         }
         ic.deleteSurroundingText(units, 0)
+        updateAutoShift()
     }
 
     override fun onEnter() {
@@ -91,6 +116,7 @@ class SnapKeysService : InputMethodService(), KeyboardView.Listener {
             ic.endBatchEdit()
         }
         sendDefaultEditorAction(true)
+        updateAutoShift()
     }
 
     override fun onSpace() = onCharacter(' ')

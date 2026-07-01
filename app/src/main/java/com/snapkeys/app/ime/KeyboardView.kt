@@ -3,28 +3,34 @@ package com.snapkeys.app.ime
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.res.ColorStateList
-import android.graphics.Color
+import android.content.res.Configuration
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.RippleDrawable
 import android.os.SystemClock
 import android.util.TypedValue
 import android.view.Gravity
+import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
+import android.view.SoundEffectConstants
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.GridLayout
 import android.widget.LinearLayout
+import android.widget.PopupWindow
 import android.widget.ScrollView
+import android.widget.TextView
 
 /**
  * The on-screen keyboard, built in code (no XML) so the scaffold has zero
  * layout-inflation surprises. It emits high-level events to its [listener];
  * all text-manipulation lives in [SnapKeysService].
  *
- * Four pages: QWERTY letters (with a number row), two symbol pages, and an
- * emoji picker. Shift supports caps lock via double-tap; backspace repeats
- * on long-press.
+ * Styled and behaved like Gboard: light/dark palette following the system
+ * theme, key-press preview bubbles, haptic + sound feedback, caps-lock via
+ * double-tap shift, auto-capitalization (driven by the service through
+ * [setAutoShift]), repeating backspace, and an accent-colored pill enter key.
+ * Four pages: QWERTY with a number row, two symbol pages, and an emoji picker.
  */
 @SuppressLint("ViewConstructor")
 class KeyboardView(context: Context) : LinearLayout(context) {
@@ -44,19 +50,92 @@ class KeyboardView(context: Context) : LinearLayout(context) {
     private enum class Page { LETTERS, SYMBOLS, SYMBOLS_ALT, EMOJI }
     private enum class ShiftState { OFF, ON, CAPS_LOCK }
 
+    /** Gboard palettes: light (f1f3f4 board / white keys) and dark. */
+    private class Palette(
+        val background: Int,
+        val key: Int,
+        val keyText: Int,
+        val special: Int,
+        val specialText: Int,
+        val accent: Int,
+        val ripple: Int,
+        val hint: Int,
+    )
+
+    private val palette: Palette = run {
+        val night = resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK ==
+            Configuration.UI_MODE_NIGHT_YES
+        if (night) Palette(
+            background = 0xFF202124.toInt(),
+            key = 0xFF4E5257.toInt(),
+            keyText = 0xFFE8EAED.toInt(),
+            special = 0xFF33363B.toInt(),
+            specialText = 0xFFE8EAED.toInt(),
+            accent = 0xFF1A73E8.toInt(),
+            ripple = 0x33FFFFFF,
+            hint = 0xFF9AA0A6.toInt(),
+        ) else Palette(
+            background = 0xFFF1F3F4.toInt(),
+            key = 0xFFFFFFFF.toInt(),
+            keyText = 0xFF202124.toInt(),
+            special = 0xFFDADCE0.toInt(),
+            specialText = 0xFF3C4043.toInt(),
+            accent = 0xFF1A73E8.toInt(),
+            ripple = 0x1F000000,
+            hint = 0xFF5F6368.toInt(),
+        )
+    }
+
     private var shift = ShiftState.OFF
+    private var autoShifted = false
     private var lastShiftTapMs = 0L
     private val letterKeys = mutableListOf<Pair<Button, Char>>()
     private var shiftKey: Button? = null
 
     private val pages = mutableMapOf<Page, LinearLayout>()
 
+    // Key-press preview bubble, Gboard's signature feedback.
+    private val previewText = TextView(context).apply {
+        gravity = Gravity.CENTER
+        setTextColor(palette.keyText)
+        setTextSize(TypedValue.COMPLEX_UNIT_SP, 30f)
+        background = GradientDrawable().apply {
+            cornerRadius = dp(10).toFloat()
+            setColor(palette.key)
+        }
+        elevation = dp(4).toFloat()
+    }
+    private val preview = PopupWindow(previewText).apply {
+        isClippingEnabled = false
+        isTouchable = false
+        animationStyle = 0
+    }
+
     init {
         orientation = VERTICAL
-        setBackgroundColor(BG)
-        val pad = dp(3)
-        setPadding(pad, pad, pad, pad)
+        setBackgroundColor(palette.background)
+        setPadding(dp(3), dp(5), dp(3), dp(7))
         switchTo(Page.LETTERS)
+    }
+
+    /**
+     * Auto-capitalization hook for the service: raises shift at sentence
+     * starts and lowers it again, without disturbing manual shift/caps-lock.
+     */
+    fun setAutoShift(enabled: Boolean) {
+        if (shift == ShiftState.CAPS_LOCK) return
+        when {
+            enabled && shift == ShiftState.OFF -> {
+                shift = ShiftState.ON
+                autoShifted = true
+                applyShift()
+            }
+            !enabled && shift == ShiftState.ON && autoShifted -> {
+                shift = ShiftState.OFF
+                autoShifted = false
+                applyShift()
+            }
+        }
     }
 
     // region Pages
@@ -127,7 +206,7 @@ class KeyboardView(context: Context) : LinearLayout(context) {
         })
         addView(row {
             addView(specialKey("ABC", weight = 1.5f) { switchTo(Page.LETTERS) })
-            addView(key("space", weight = 5f, textSizeSp = 14f) { listener?.onSpace() })
+            addView(spaceKey(weight = 5f))
             addView(backspaceKey(weight = 1.5f))
         })
     }
@@ -137,9 +216,9 @@ class KeyboardView(context: Context) : LinearLayout(context) {
         addView(specialKey(pageSwitchLabel, weight = 1.5f) { switchTo(pageSwitchTarget) })
         addView(specialKey("😊") { switchTo(Page.EMOJI) })
         addView(charKey(','))
-        addView(key("space", weight = 4f, textSizeSp = 14f) { listener?.onSpace() })
+        addView(spaceKey(weight = 4f))
         addView(charKey('.'))
-        addView(specialKey("⏎", weight = 1.5f, accent = true) { listener?.onEnter() })
+        addView(enterKey(weight = 1.5f))
     }
 
     // endregion
@@ -151,8 +230,10 @@ class KeyboardView(context: Context) : LinearLayout(context) {
         shift = when {
             shift == ShiftState.OFF && now - lastShiftTapMs < DOUBLE_TAP_MS -> ShiftState.CAPS_LOCK
             shift == ShiftState.OFF -> ShiftState.ON
+            shift == ShiftState.ON && now - lastShiftTapMs < DOUBLE_TAP_MS -> ShiftState.CAPS_LOCK
             else -> ShiftState.OFF
         }
+        autoShifted = false
         lastShiftTapMs = now
         applyShift()
     }
@@ -164,7 +245,8 @@ class KeyboardView(context: Context) : LinearLayout(context) {
         }
         shiftKey?.let {
             it.text = if (shift == ShiftState.CAPS_LOCK) "⇪" else "⇧"
-            it.background = keyBackground(if (up) ACCENT else SPECIAL_KEY)
+            it.setTextColor(if (up) 0xFFFFFFFF.toInt() else palette.specialText)
+            it.background = keyBackground(if (up) palette.accent else palette.special)
         }
     }
 
@@ -172,6 +254,7 @@ class KeyboardView(context: Context) : LinearLayout(context) {
         listener?.onCharacter(if (shift != ShiftState.OFF) c.uppercaseChar() else c)
         if (shift == ShiftState.ON) {
             shift = ShiftState.OFF
+            autoShifted = false
             applyShift()
         }
     }
@@ -202,13 +285,31 @@ class KeyboardView(context: Context) : LinearLayout(context) {
         }
 
     private fun letterKey(c: Char): Button =
-        key(c.toString()) { emitLetter(c) }.also { letterKeys += it to c }
+        key(c.toString(), showPreview = true) { emitLetter(c) }.also { letterKeys += it to c }
 
     private fun charKey(c: Char): Button =
-        key(c.toString()) { listener?.onCharacter(c) }
+        key(c.toString(), showPreview = true) { listener?.onCharacter(c) }
 
-    private fun specialKey(label: String, weight: Float = 1f, accent: Boolean = false, onClick: () -> Unit): Button =
-        key(label, weight, textSizeSp = 16f, color = if (accent) ACCENT else SPECIAL_KEY, onClick = onClick)
+    private fun specialKey(label: String, weight: Float = 1f, onClick: () -> Unit): Button =
+        key(
+            label, weight, textSizeSp = 16f,
+            color = palette.special, textColor = palette.specialText,
+            onClick = onClick,
+        )
+
+    private fun spaceKey(weight: Float): Button =
+        key(
+            "SnapKeys", weight, textSizeSp = 13f,
+            textColor = palette.hint,
+            sound = SoundEffectConstants.NAVIGATION_DOWN,
+        ) { listener?.onSpace() }
+
+    private fun enterKey(weight: Float): Button =
+        key(
+            "⏎", weight, textSizeSp = 20f,
+            color = palette.accent, textColor = 0xFFFFFFFF.toInt(),
+            pill = true, sound = SoundEffectConstants.NAVIGATION_UP,
+        ) { listener?.onEnter() }
 
     private fun backspaceKey(weight: Float = 1f): Button {
         val repeat = object : Runnable {
@@ -231,47 +332,87 @@ class KeyboardView(context: Context) : LinearLayout(context) {
         }
     }
 
+    @SuppressLint("ClickableViewAccessibility")
     private fun key(
         label: String,
         weight: Float = 1f,
-        textSizeSp: Float = 19f,
-        color: Int = KEY,
+        textSizeSp: Float = 20f,
+        color: Int = palette.key,
+        textColor: Int = palette.keyText,
         flat: Boolean = false,
+        pill: Boolean = false,
+        showPreview: Boolean = false,
+        sound: Int = SoundEffectConstants.CLICK,
         onClick: () -> Unit,
     ): Button = Button(context, null, 0).apply {
         text = label
         isAllCaps = false
         gravity = Gravity.CENTER
-        typeface = Typeface.DEFAULT
-        setTextColor(Color.WHITE)
+        typeface = Typeface.create("sans-serif", Typeface.NORMAL)
+        setTextColor(textColor)
         setTextSize(TypedValue.COMPLEX_UNIT_SP, textSizeSp)
         setPadding(0, 0, 0, 0)
-        background = if (flat) rippleOnly() else keyBackground(color)
-        val m = dp(2)
+        background = if (flat) rippleOnly() else keyBackground(color, pill)
+        if (!flat) {
+            stateListAnimator = null
+            elevation = dp(1).toFloat()
+        }
+        val h = dp(3)
+        val v = dp(5)
         layoutParams = LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, weight)
-            .apply { setMargins(m, m, m, m) }
-        setOnClickListener { onClick() }
+            .apply { setMargins(h, v, h, v) }
+        setOnClickListener {
+            performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+            playSoundEffect(sound)
+            onClick()
+        }
+        if (showPreview) {
+            setOnTouchListener { view, event ->
+                when (event.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> showPreview(view as Button)
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> preview.dismiss()
+                }
+                view.onTouchEvent(event)
+            }
+        }
+    }
+
+    private fun showPreview(key: Button) {
+        val w = key.width + dp(16)
+        val h = key.height + dp(12)
+        previewText.text = key.text
+        preview.width = w
+        preview.height = h
+        val loc = IntArray(2)
+        key.getLocationInWindow(loc)
+        val x = loc[0] - (w - key.width) / 2
+        val y = loc[1] - h - dp(8)
+        if (preview.isShowing) {
+            preview.update(x, y, w, h)
+        } else {
+            preview.showAtLocation(this, Gravity.NO_GRAVITY, x, y)
+        }
     }
 
     private fun spacer(weight: Float) = android.widget.Space(context).apply {
         layoutParams = LayoutParams(0, 0, weight)
     }
 
-    private fun keyBackground(color: Int) = RippleDrawable(
-        ColorStateList.valueOf(RIPPLE),
+    private fun keyBackground(color: Int, pill: Boolean = false) = RippleDrawable(
+        ColorStateList.valueOf(palette.ripple),
         GradientDrawable().apply {
-            cornerRadius = dp(7).toFloat()
+            cornerRadius = dp(if (pill) ROW_HEIGHT_DP / 2 else 8).toFloat()
             setColor(color)
         },
         null,
     )
 
     private fun rippleOnly() = RippleDrawable(
-        ColorStateList.valueOf(RIPPLE),
+        ColorStateList.valueOf(palette.ripple),
         null,
         GradientDrawable().apply {
-            cornerRadius = dp(7).toFloat()
-            setColor(Color.WHITE)
+            cornerRadius = dp(8).toFloat()
+            setColor(0xFFFFFFFF.toInt())
         },
     )
 
@@ -281,17 +422,10 @@ class KeyboardView(context: Context) : LinearLayout(context) {
     // endregion
 
     private companion object {
-        const val ROW_HEIGHT_DP = 52
+        const val ROW_HEIGHT_DP = 54
         const val EMOJI_COLUMNS = 8
         const val DOUBLE_TAP_MS = 350L
         const val BACKSPACE_REPEAT_MS = 60L
-
-        // Dark keyboard palette.
-        const val BG = 0xFF1B1E24.toInt()
-        const val KEY = 0xFF3C4148.toInt()
-        const val SPECIAL_KEY = 0xFF2A2E35.toInt()
-        const val ACCENT = 0xFF4C8BF5.toInt()
-        const val RIPPLE = 0x40FFFFFF
 
         val EMOJIS = listOf(
             // Smileys
