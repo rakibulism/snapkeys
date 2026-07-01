@@ -6,8 +6,13 @@ Type `brb` + space and it becomes `be right back`. Type `@@` and it becomes your
 
 > Status: early scaffold. The core expansion engine, storage, keyboard service, and management UI are in place. The on-screen key layout is intentionally minimal and meant to be extended.
 
-### Download
-https://github.com/rakibulism/snapkeys/actions/runs/28543516880/artifacts/8020931059
+### 📲 Download & install
+
+**[⬇ Download snapkeys.apk](https://github.com/rakibulism/snapkeys/releases/download/latest/snapkeys.apk)** — always the newest build from `main`, no login needed.
+
+1. Open the link above on your phone and download the APK.
+2. Tap the downloaded file. Allow "install unknown apps" if Android asks.
+3. If Play Protect warns you, tap **More details → Install anyway** (expected for apps outside the Play Store).
 
 ## How it works
 
@@ -35,10 +40,6 @@ Ships with a few defaults (`brb`, `omw`, `ty`, `@@`) so you can try it immediate
 ./gradlew test                 # run the ExpansionEngine unit tests
 ./gradlew installDebug         # install onto a connected device/emulator
 ```
-
-> The Gradle wrapper JAR is not committed. Generate the wrapper once with a local
-> Gradle install (`gradle wrapper --gradle-version 8.7`) or open the project in
-> Android Studio, which provisions it automatically.
 
 ## Roadmap
 
