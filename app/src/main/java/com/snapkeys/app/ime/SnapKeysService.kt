@@ -56,14 +56,27 @@ class SnapKeysService : InputMethodService(), KeyboardView.Listener {
         ic.commitText(c.toString(), 1)
     }
 
+    override fun onText(text: String) {
+        currentInputConnection?.commitText(text, 1)
+    }
+
     override fun onBackspace() {
         val ic = currentInputConnection ?: return
         val selected = ic.getSelectedText(0)
-        if (selected.isNullOrEmpty()) {
-            ic.deleteSurroundingText(1, 0)
-        } else {
+        if (!selected.isNullOrEmpty()) {
             ic.commitText("", 1)
+            return
         }
+        // Delete whole characters, not UTF-16 code units — emoji are surrogate
+        // pairs and some carry a trailing variation selector (e.g. ❤️).
+        val before = ic.getTextBeforeCursor(2, 0) ?: ""
+        val units = when {
+            before.length >= 2 &&
+                Character.isSurrogatePair(before[before.length - 2], before[before.length - 1]) -> 2
+            before.length >= 2 && before.last() == '\uFE0F' -> 2
+            else -> 1
+        }
+        ic.deleteSurroundingText(units, 0)
     }
 
     override fun onEnter() {

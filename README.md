@@ -18,7 +18,7 @@ Type `brb` + space and it becomes `be right back`. Type `@@` and it becomes your
 
 - **`ime/SnapKeysService`** — an `InputMethodService` registered with the system. When enabled and selected, it becomes the active keyboard across the whole device.
 - **`ime/ExpansionEngine`** — pure, unit-tested logic. It watches the word before the cursor and, when a delimiter (space, newline, punctuation) is typed, replaces a matching trigger with its expansion.
-- **`ime/KeyboardView`** — a simple QWERTY key grid built in code that emits key events to the service.
+- **`ime/KeyboardView`** — the on-screen keyboard, built in code: QWERTY with a number row, two symbol pages (`@ # $ € ~ …`), an emoji picker, caps-lock shift, and repeating backspace.
 - **`data/Shortcut` + `data/ShortcutStore`** — the shortcut model and JSON-backed persistence (SharedPreferences).
 - **`ui/MainActivity` + `ui/EditShortcutActivity`** — manage (add / edit / delete) your shortcuts.
 
@@ -43,7 +43,8 @@ Ships with a few defaults (`brb`, `omw`, `ty`, `@@`) so you can try it immediate
 
 ## Roadmap
 
-- [ ] Symbols / numbers page and long-press alternates on the keyboard
+- [x] Symbols / numbers pages and emoji picker
+- [ ] Long-press alternates on letter keys
 - [ ] Case-preserving expansions (e.g. `Brb` → `Be right back`)
 - [ ] Import / export shortcuts
 - [ ] Per-shortcut enable toggle in the UI
