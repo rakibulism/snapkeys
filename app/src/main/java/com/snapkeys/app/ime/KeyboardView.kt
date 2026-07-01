@@ -43,6 +43,12 @@ class KeyboardView(context: Context) : LinearLayout(context) {
         fun onBackspace()
         fun onEnter()
         fun onSpace()
+
+        /** Globe key tap: switch to the next enabled keyboard. */
+        fun onSwitchIme()
+
+        /** Globe key long-press: show the system keyboard picker. */
+        fun onImePicker()
     }
 
     var listener: Listener? = null
@@ -211,15 +217,26 @@ class KeyboardView(context: Context) : LinearLayout(context) {
         })
     }
 
-    /** Shared bottom row: page switch, emoji, comma, space, period, enter. */
+    /** Shared bottom row: page switch, emoji, globe, comma, space, period, enter. */
     private fun bottomRow(pageSwitchLabel: String, pageSwitchTarget: Page): LinearLayout = row {
         addView(specialKey(pageSwitchLabel, weight = 1.5f) { switchTo(pageSwitchTarget) })
         addView(specialKey("😊") { switchTo(Page.EMOJI) })
+        addView(globeKey())
         addView(charKey(','))
-        addView(spaceKey(weight = 4f))
+        addView(spaceKey(weight = 3f))
         addView(charKey('.'))
         addView(enterKey(weight = 1.5f))
     }
+
+    /** Gboard's globe key: tap switches keyboard, long-press opens the picker. */
+    private fun globeKey(): Button =
+        specialKey("🌐") { listener?.onSwitchIme() }.apply {
+            setOnLongClickListener {
+                performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                listener?.onImePicker()
+                true
+            }
+        }
 
     // endregion
 

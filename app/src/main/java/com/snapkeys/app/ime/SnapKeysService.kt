@@ -1,8 +1,10 @@
 package com.snapkeys.app.ime
 
 import android.inputmethodservice.InputMethodService
+import android.os.Build
 import android.view.View
 import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputMethodManager
 import com.snapkeys.app.data.ShortcutStore
 
 /**
@@ -120,6 +122,26 @@ class SnapKeysService : InputMethodService(), KeyboardView.Listener {
     }
 
     override fun onSpace() = onCharacter(' ')
+
+    override fun onSwitchIme() {
+        val switched = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            switchToNextInputMethod(false)
+        } else {
+            val token = window?.window?.attributes?.token
+            @Suppress("DEPRECATION")
+            token != null && imm().switchToNextInputMethod(token, false)
+        }
+        // Nothing to cycle to (only one keyboard enabled) — offer the picker
+        // so the user can see what's available.
+        if (!switched) onImePicker()
+    }
+
+    override fun onImePicker() {
+        imm().showInputMethodPicker()
+    }
+
+    private fun imm(): InputMethodManager =
+        getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
 
     // endregion
 
