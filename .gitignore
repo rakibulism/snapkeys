@@ -19,3 +19,6 @@ local.properties
 
 # OS
 .DS_Store
+
+# Locally downloaded build artifacts
+apk/
