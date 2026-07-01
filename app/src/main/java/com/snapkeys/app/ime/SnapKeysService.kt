@@ -73,8 +73,9 @@ class SnapKeysService : InputMethodService(), KeyboardView.Listener {
 
     override fun onCharacter(c: Char) {
         if (snippetCapture != null) {
-            // Delimiters can never appear in a trigger — the engine splits on them.
-            if (!ExpansionEngine.isDelimiter(c)) appendToTrigger(c.toString())
+            // Any visible character may be part of a trigger; whitespace
+            // can't (space is inert here and enter confirms the capture).
+            if (!c.isWhitespace()) appendToTrigger(c.toString())
             return
         }
         val ic = currentInputConnection ?: return

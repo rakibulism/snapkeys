@@ -6,9 +6,13 @@ import com.snapkeys.app.data.Shortcut
  * Pure text-expansion logic, kept free of Android dependencies so it can be
  * unit-tested in isolation.
  *
- * The engine watches the "word" immediately preceding the cursor. When a
- * delimiter is typed, it checks whether that word matches an enabled trigger
- * and, if so, reports how many characters to delete and what to insert.
+ * When a delimiter is typed, the engine checks whether the text ending at the
+ * cursor matches an enabled trigger (longest first) and, if so, reports how
+ * many characters to delete and what to insert. Matching by suffix — rather
+ * than by splitting into words — lets triggers contain punctuation and other
+ * special characters (`@@`, `!!`, `addr.`). Triggers that start with a letter
+ * or digit must still sit at a word boundary, so `ty` never fires inside
+ * `pretty`.
  */
 class ExpansionEngine(shortcuts: List<Shortcut>) {
 
@@ -16,6 +20,10 @@ class ExpansionEngine(shortcuts: List<Shortcut>) {
     private val byTrigger: Map<String, Shortcut> =
         shortcuts.filter { it.enabled && it.trigger.isNotEmpty() }
             .associateBy { it.trigger.lowercase() }
+
+    // Candidate suffix lengths, longest first so the most specific trigger wins.
+    private val lengths: List<Int> =
+        byTrigger.keys.map { it.length }.distinct().sortedDescending()
 
     data class Expansion(
         /** Number of characters to delete before the cursor (the trigger). */
@@ -31,19 +39,20 @@ class ExpansionEngine(shortcuts: List<Shortcut>) {
      * @return an [Expansion] to apply, or null if nothing matches
      */
     fun onDelimiter(textBeforeCursor: CharSequence, delimiter: Char?): Expansion? {
-        val word = trailingWord(textBeforeCursor)
-        if (word.isEmpty()) return null
-        val match = byTrigger[word.lowercase()] ?: return null
-        val insert = if (delimiter != null) match.expansion + delimiter else match.expansion
-        return Expansion(deleteBefore = word.length, insert = insert)
-    }
-
-    /** Extracts the run of non-delimiter characters ending at the cursor. */
-    private fun trailingWord(text: CharSequence): String {
-        var end = text.length
-        var start = end
-        while (start > 0 && !isDelimiter(text[start - 1])) start--
-        return text.subSequence(start, end).toString()
+        for (length in lengths) {
+            if (textBeforeCursor.length < length) continue
+            val start = textBeforeCursor.length - length
+            val candidate = textBeforeCursor.subSequence(start, textBeforeCursor.length).toString()
+            val match = byTrigger[candidate.lowercase()] ?: continue
+            // Word-like triggers must start at a word boundary; symbol
+            // triggers (@@, !!) may attach directly to preceding text.
+            if (match.trigger.first().isLetterOrDigit() &&
+                start > 0 && !isDelimiter(textBeforeCursor[start - 1])
+            ) continue
+            val insert = if (delimiter != null) match.expansion + delimiter else match.expansion
+            return Expansion(deleteBefore = length, insert = insert)
+        }
+        return null
     }
 
     companion object {
