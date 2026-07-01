@@ -8,6 +8,8 @@ import android.view.inputmethod.InputMethodManager
 import com.snapkeys.app.data.Shortcut
 import com.snapkeys.app.data.ShortcutStore
 import com.snapkeys.app.sync.SyncManager
+import org.json.JSONObject
+import java.util.concurrent.Executors
 
 /**
  * The SnapKeys keyboard. Once enabled in system settings and selected as the
@@ -20,7 +22,16 @@ import com.snapkeys.app.sync.SyncManager
 class SnapKeysService : InputMethodService(), KeyboardView.Listener {
 
     private lateinit var engine: ExpansionEngine
+    private var shortcuts: List<Shortcut> = emptyList()
     private var keyboardView: KeyboardView? = null
+
+    // Word prediction: dictionary loads off the main thread on create.
+    @Volatile private var predictor: WordPredictor? = null
+
+    /** What each suggestion chip does when tapped. */
+    private data class Suggestion(val display: String, val commit: String, val deleteBefore: Int)
+
+    private var currentSuggestions: List<Suggestion> = emptyList()
 
     // Snippet capture: while non-null, key presses type the trigger for this
     // snippet in the keyboard's toolbar instead of going to the editor.
@@ -30,11 +41,16 @@ class SnapKeysService : InputMethodService(), KeyboardView.Listener {
     override fun onCreate() {
         super.onCreate()
         reloadShortcuts()
+        executor.execute {
+            val dictionary = assets.open("words.txt").bufferedReader().readLines()
+            predictor = WordPredictor(dictionary).also { loadLearnedWords(it) }
+        }
     }
 
     /** Rebuild the engine so edits made in the management UI take effect. */
     private fun reloadShortcuts() {
-        engine = ExpansionEngine(ShortcutStore.get(this).load())
+        shortcuts = ShortcutStore.get(this).load()
+        engine = ExpansionEngine(shortcuts)
     }
 
     override fun onStartInput(attribute: EditorInfo?, restarting: Boolean) {
@@ -47,7 +63,7 @@ class SnapKeysService : InputMethodService(), KeyboardView.Listener {
         super.onStartInputView(editorInfo, restarting)
         // A different field means the captured text is gone — drop the flow.
         if (snippetCapture != null) onSnippetCancel()
-        updateAutoShift()
+        afterEdit()
     }
 
     override fun onCreateInputView(): View {
@@ -82,18 +98,19 @@ class SnapKeysService : InputMethodService(), KeyboardView.Listener {
         // Run expansion when a delimiter finishes the preceding word.
         if (ExpansionEngine.isDelimiter(c)) {
             val before = ic.getTextBeforeCursor(MAX_LOOKBEHIND, 0) ?: ""
+            learnCompletedWord(before)
             val expansion = engine.onDelimiter(before, c)
             if (expansion != null) {
                 ic.beginBatchEdit()
                 ic.deleteSurroundingText(expansion.deleteBefore, 0)
                 ic.commitText(expansion.insert, 1)
                 ic.endBatchEdit()
-                updateAutoShift()
+                afterEdit()
                 return
             }
         }
         ic.commitText(c.toString(), 1)
-        updateAutoShift()
+        afterEdit()
     }
 
     override fun onText(text: String) {
@@ -102,7 +119,7 @@ class SnapKeysService : InputMethodService(), KeyboardView.Listener {
             return
         }
         currentInputConnection?.commitText(text, 1)
-        updateAutoShift()
+        afterEdit()
     }
 
     override fun onBackspace() {
@@ -133,7 +150,7 @@ class SnapKeysService : InputMethodService(), KeyboardView.Listener {
             else -> 1
         }
         ic.deleteSurroundingText(units, 0)
-        updateAutoShift()
+        afterEdit()
     }
 
     override fun onEnter() {
@@ -152,7 +169,7 @@ class SnapKeysService : InputMethodService(), KeyboardView.Listener {
             ic.endBatchEdit()
         }
         sendDefaultEditorAction(true)
-        updateAutoShift()
+        afterEdit()
     }
 
     override fun onSpace() = onCharacter(' ')
@@ -221,6 +238,115 @@ class SnapKeysService : InputMethodService(), KeyboardView.Listener {
         keyboardView?.setSnippetTrigger(triggerBuffer.toString())
     }
 
+    override fun onSuggestionPicked(index: Int) {
+        val suggestion = currentSuggestions.getOrNull(index) ?: return
+        val ic = currentInputConnection ?: return
+        ic.beginBatchEdit()
+        ic.deleteSurroundingText(suggestion.deleteBefore, 0)
+        ic.commitText(suggestion.commit, 1)
+        ic.endBatchEdit()
+        predictor?.let {
+            val word = suggestion.commit.trim()
+            if (word.all { c -> c.isLetter() }) {
+                it.learn(word)
+                persistLearnedWords(it)
+            }
+        }
+        afterEdit()
+    }
+
+    override fun onSwipe(path: String) {
+        if (snippetCapture != null) return
+        val ic = currentInputConnection ?: return
+        val view = keyboardView ?: return
+        val candidates = predictor?.gesture(path.lowercase()) ?: return
+        if (candidates.isEmpty()) return
+        var word = candidates.first()
+        if (view.isShifted()) {
+            word = word.replaceFirstChar { it.uppercaseChar() }
+            view.consumeShift()
+        }
+        // Gboard-style spacing: a swiped word separates itself from whatever
+        // was typed before it.
+        val before = ic.getTextBeforeCursor(1, 0) ?: ""
+        val glue = if (before.isNotEmpty() && !before.last().isWhitespace()) " " else ""
+        ic.commitText(glue + word, 1)
+        predictor?.let {
+            it.learn(word)
+            persistLearnedWords(it)
+        }
+        updateAutoShift()
+        // Offer the runners-up for one-tap correction of the committed word.
+        currentSuggestions = candidates.drop(1).map { candidate ->
+            Suggestion(display = candidate, commit = candidate, deleteBefore = word.length)
+        }
+        view.showSuggestions(currentSuggestions.map { it.display })
+    }
+
+    /** Refresh shift + suggestions after anything changed in the editor. */
+    private fun afterEdit() {
+        updateAutoShift()
+        updateSuggestions()
+    }
+
+    private fun updateSuggestions() {
+        val view = keyboardView ?: return
+        if (snippetCapture != null) return
+        val ic = currentInputConnection
+        val word = if (ic != null) trailingWord(ic.getTextBeforeCursor(32, 0) ?: "") else ""
+        currentSuggestions = if (word.isEmpty()) {
+            emptyList()
+        } else {
+            buildList {
+                // The matching shortcut expansion always leads.
+                shortcuts.firstOrNull {
+                    it.enabled && it.trigger.startsWith(word, ignoreCase = true)
+                }?.let {
+                    val label = it.expansion.replace('\n', ' ')
+                    add(Suggestion(label, it.expansion + " ", word.length))
+                }
+                predictor?.complete(word)?.forEach {
+                    add(Suggestion(it, "$it ", word.length))
+                }
+            }.distinctBy { it.display }.take(3)
+        }
+        view.showSuggestions(currentSuggestions.map { it.display })
+    }
+
+    private fun learnCompletedWord(textBeforeCursor: CharSequence) {
+        val word = trailingWord(textBeforeCursor)
+        if (word.length < 3 || !word.all { it.isLetter() }) return
+        predictor?.let {
+            it.learn(word)
+            persistLearnedWords(it)
+        }
+    }
+
+    private fun trailingWord(text: CharSequence): String {
+        var start = text.length
+        while (start > 0 && !ExpansionEngine.isDelimiter(text[start - 1])) start--
+        return text.subSequence(start, text.length).toString()
+    }
+
+    private fun loadLearnedWords(predictor: WordPredictor) {
+        val raw = getSharedPreferences(PREDICTOR_PREFS, MODE_PRIVATE)
+            .getString(KEY_LEARNED, null) ?: return
+        runCatching {
+            val json = JSONObject(raw)
+            val entries = json.keys().asSequence().associateWith { json.getInt(it) }
+            predictor.importLearned(entries)
+        }
+    }
+
+    private fun persistLearnedWords(predictor: WordPredictor) {
+        executor.execute {
+            val json = JSONObject()
+            predictor.learnedSnapshot().forEach { (word, count) -> json.put(word, count) }
+            getSharedPreferences(PREDICTOR_PREFS, MODE_PRIVATE)
+                .edit().putString(KEY_LEARNED, json.toString()).apply()
+        }
+    }
+
     private fun imm(): InputMethodManager =
         getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
 
@@ -234,5 +360,10 @@ class SnapKeysService : InputMethodService(), KeyboardView.Listener {
         private const val SNIPPET_LOOKBEHIND = 1000
 
         private const val MAX_TRIGGER_LENGTH = 24
+
+        private const val PREDICTOR_PREFS = "snapkeys_predictor"
+        private const val KEY_LEARNED = "learned_words"
+
+        private val executor = Executors.newSingleThreadExecutor()
     }
 }

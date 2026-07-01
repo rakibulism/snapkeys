@@ -18,7 +18,8 @@ Type `brb` + space and it becomes `be right back`. Type `@@` and it becomes your
 
 - **`ime/SnapKeysService`** — an `InputMethodService` registered with the system. When enabled and selected, it becomes the active keyboard across the whole device.
 - **`ime/ExpansionEngine`** — pure, unit-tested logic. It watches the word before the cursor and, when a delimiter (space, newline, punctuation) is typed, replaces a matching trigger with its expansion.
-- **`ime/KeyboardView`** — the on-screen keyboard, built in code: QWERTY with a number row, two symbol pages (`@ # $ € ~ …`), an emoji picker, caps-lock shift, and repeating backspace.
+- **`ime/KeyboardView`** — the on-screen keyboard, built in code: QWERTY with a number row, two symbol pages (`@ # $ € ~ …`), an emoji picker, caps-lock shift, repeating backspace, long-press accents, swipe typing, and a suggestion bar.
+- **`ime/WordPredictor`** — pure, unit-tested completion + swipe-path matching over a 10k-word frequency dictionary ([google-10000-english](https://github.com/first20hours/google-10000-english)) plus words learned from your typing (stored on-device).
 - **`data/Shortcut` + `data/ShortcutStore`** — the shortcut model and JSON-backed persistence (SharedPreferences).
 - **`ui/MainActivity` + `ui/EditShortcutActivity`** — manage (add / edit / delete) your shortcuts.
 
@@ -74,12 +75,13 @@ No client ID goes in the code — Google matches the app by package + signature.
 ## Roadmap
 
 - [x] Symbols / numbers pages and emoji picker
-- [ ] Long-press alternates on letter keys
+- [x] Long-press alternates on letter keys
+- [x] Themes (light/dark, key styling)
+- [x] Suggestion bar / inline autocomplete
+- [x] Swipe typing (v1: path matching against the dictionary)
 - [ ] Case-preserving expansions (e.g. `Brb` → `Be right back`)
 - [ ] Import / export shortcuts
 - [ ] Per-shortcut enable toggle in the UI
-- [ ] Themes (light/dark, key styling)
-- [ ] Suggestion bar / inline autocomplete
 
 ## License
 

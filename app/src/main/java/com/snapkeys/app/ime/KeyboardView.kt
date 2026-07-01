@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.res.ColorStateList
 import android.content.res.Configuration
+import android.graphics.Rect
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.RippleDrawable
@@ -14,6 +15,7 @@ import android.view.Gravity
 import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.SoundEffectConstants
+import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.FrameLayout
@@ -31,8 +33,11 @@ import android.widget.TextView
  * Styled and behaved like Gboard: light/dark palette following the system
  * theme, key-press preview bubbles, haptic + sound feedback, caps-lock via
  * double-tap shift, auto-capitalization (driven by the service through
- * [setAutoShift]), repeating backspace, and an accent-colored pill enter key.
- * Four pages: QWERTY with a number row, two symbol pages, and an emoji picker.
+ * [setAutoShift]), repeating backspace, an accent-colored pill enter key,
+ * a suggestion bar, long-press alternates on letters, and swipe typing
+ * (the crossed-key path is reported via [Listener.onSwipe]; the service
+ * resolves it to a word). Four pages: QWERTY with a number row, two symbol
+ * pages, and an emoji picker. The toolbar also hosts the save-snippet flow.
  */
 @SuppressLint("ViewConstructor")
 class KeyboardView(context: Context) : LinearLayout(context) {
@@ -60,6 +65,12 @@ class KeyboardView(context: Context) : LinearLayout(context) {
 
         /** Snippet capture dismissed (✕). */
         fun onSnippetCancel()
+
+        /** A suggestion chip was tapped (index into the last shown list). */
+        fun onSuggestionPicked(index: Int)
+
+        /** A swipe across letter keys ended; [path] is the crossed keys. */
+        fun onSwipe(path: String)
     }
 
     var listener: Listener? = null
@@ -128,10 +139,21 @@ class KeyboardView(context: Context) : LinearLayout(context) {
         animationStyle = 0
     }
 
-    // Toolbar strip above the keys (Gboard-style), hosting the snippet flow.
+    // Long-press alternates popup.
+    private var alternatesPopup: PopupWindow? = null
+
+    // Swipe typing state: non-null while a gesture is in flight.
+    private var swipePath: StringBuilder? = null
+    private var swipeStartX = 0f
+    private var swipeStartY = 0f
+    private var letterBounds: List<Pair<Rect, Char>> = emptyList()
+
+    // Toolbar strip above the keys (Gboard-style): suggestions + snippet flow.
     private lateinit var toolbarTitle: TextView
     private lateinit var normalBar: LinearLayout
     private lateinit var captureBar: LinearLayout
+    private lateinit var suggestionArea: LinearLayout
+    private lateinit var saveSnippetButton: Button
     private lateinit var snippetPreview: TextView
     private lateinit var triggerView: TextView
     private val pageContainer = LinearLayout(context).apply { orientation = VERTICAL }
@@ -145,7 +167,26 @@ class KeyboardView(context: Context) : LinearLayout(context) {
         switchTo(Page.LETTERS)
     }
 
-    // region Toolbar + snippet capture UI
+    // region Toolbar: suggestions + snippet capture
+
+    /** Replace the toolbar content with up to 3 tappable suggestion chips. */
+    fun showSuggestions(displays: List<String>) {
+        if (captureBar.visibility == VISIBLE) return
+        suggestionArea.removeAllViews()
+        if (displays.isEmpty()) {
+            suggestionArea.addView(
+                toolbarTitle,
+                LayoutParams(0, LayoutParams.MATCH_PARENT, 1f),
+            )
+            saveSnippetButton.text = "🔖 Save snippet"
+            return
+        }
+        saveSnippetButton.text = "🔖"
+        displays.take(3).forEachIndexed { index, text ->
+            if (index > 0) suggestionArea.addView(divider())
+            suggestionArea.addView(suggestionChip(text, index))
+        }
+    }
 
     /** Show the capture strip: [snippet preview / trigger being typed] ✕ ✓. */
     fun enterSnippetMode(snippet: String) {
@@ -168,12 +209,24 @@ class KeyboardView(context: Context) : LinearLayout(context) {
 
     /** Briefly show [message] in the toolbar, then restore the app name. */
     fun flashToolbarMessage(message: String) {
+        showSuggestions(emptyList())
         toolbarTitle.text = message
         toolbarTitle.setTextColor(palette.keyText)
         toolbarTitle.postDelayed({
             toolbarTitle.text = "SnapKeys"
             toolbarTitle.setTextColor(palette.hint)
         }, MESSAGE_MS)
+    }
+
+    fun isShifted(): Boolean = shift != ShiftState.OFF
+
+    /** After a swipe word was capitalized, spend a one-shot shift. */
+    fun consumeShift() {
+        if (shift == ShiftState.ON) {
+            shift = ShiftState.OFF
+            autoShifted = false
+            applyShift()
+        }
     }
 
     private fun buildToolbar(): FrameLayout = FrameLayout(context).apply {
@@ -189,10 +242,17 @@ class KeyboardView(context: Context) : LinearLayout(context) {
             isSingleLine = true
             ellipsize = TextUtils.TruncateAt.END
         }
+        suggestionArea = LinearLayout(context).apply {
+            orientation = HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        saveSnippetButton = flatBar("🔖 Save snippet", palette.accent) {
+            listener?.onSaveSnippetTapped()
+        }
         normalBar = LinearLayout(context).apply {
             orientation = HORIZONTAL
-            addView(toolbarTitle, LinearLayout.LayoutParams(0, LayoutParams.MATCH_PARENT, 1f))
-            addView(flatBar("🔖 Save snippet", palette.accent) { listener?.onSaveSnippetTapped() })
+            addView(suggestionArea, LayoutParams(0, LayoutParams.MATCH_PARENT, 1f))
+            addView(saveSnippetButton)
         }
         captureBar = LinearLayout(context).apply {
             orientation = HORIZONTAL
@@ -214,11 +274,38 @@ class KeyboardView(context: Context) : LinearLayout(context) {
                 }
                 addView(snippetPreview)
                 addView(triggerView)
-            }, LinearLayout.LayoutParams(0, LayoutParams.MATCH_PARENT, 1f))
+            }, LayoutParams(0, LayoutParams.MATCH_PARENT, 1f))
             addView(flatBar("✓ Save", palette.accent) { listener?.onSnippetConfirm() })
         }
         addView(normalBar, FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         addView(captureBar, FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+        showSuggestions(emptyList())
+    }
+
+    private fun suggestionChip(text: String, index: Int): Button =
+        Button(context, null, 0).apply {
+            this.text = text
+            isAllCaps = false
+            isSingleLine = true
+            ellipsize = TextUtils.TruncateAt.END
+            gravity = Gravity.CENTER
+            setTextColor(palette.keyText)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
+            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+            setPadding(dp(4), 0, dp(4), 0)
+            background = rippleOnly()
+            layoutParams = LayoutParams(0, LayoutParams.MATCH_PARENT, 1f)
+            setOnClickListener {
+                performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                listener?.onSuggestionPicked(index)
+            }
+        }
+
+    private fun divider(): View = View(context).apply {
+        setBackgroundColor(palette.hint and 0x60FFFFFF.toInt())
+        layoutParams = LayoutParams(dp(1), dp(20)).apply {
+            gravity = Gravity.CENTER_VERTICAL
+        }
     }
 
     private fun flatBar(label: String, color: Int, onClick: () -> Unit): Button =
@@ -231,7 +318,7 @@ class KeyboardView(context: Context) : LinearLayout(context) {
             gravity = Gravity.CENTER
             setPadding(dp(14), 0, dp(14), 0)
             background = rippleOnly()
-            layoutParams = LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.MATCH_PARENT)
+            layoutParams = LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.MATCH_PARENT)
             setOnClickListener {
                 performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                 onClick()
@@ -239,6 +326,8 @@ class KeyboardView(context: Context) : LinearLayout(context) {
         }
 
     // endregion
+
+    // region Auto-shift
 
     /**
      * Auto-capitalization hook for the service: raises shift at sentence
@@ -259,6 +348,8 @@ class KeyboardView(context: Context) : LinearLayout(context) {
             }
         }
     }
+
+    // endregion
 
     // region Pages
 
@@ -394,6 +485,98 @@ class KeyboardView(context: Context) : LinearLayout(context) {
 
     // endregion
 
+    // region Long-press alternates
+
+    private fun showAlternates(anchor: Button, base: Char) {
+        val alternates = ALTERNATES[base] ?: return
+        preview.dismiss()
+        val row = LinearLayout(context).apply {
+            orientation = HORIZONTAL
+            val pad = dp(4)
+            setPadding(pad, pad, pad, pad)
+            background = GradientDrawable().apply {
+                cornerRadius = dp(10).toFloat()
+                setColor(palette.key)
+            }
+            elevation = dp(6).toFloat()
+        }
+        alternates.forEach { alt ->
+            val out = if (shift != ShiftState.OFF) alt.uppercaseChar() else alt
+            row.addView(Button(context, null, 0).apply {
+                text = out.toString()
+                isAllCaps = false
+                gravity = Gravity.CENTER
+                setTextColor(palette.keyText)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f)
+                setPadding(0, 0, 0, 0)
+                background = rippleOnly()
+                layoutParams = LayoutParams(dp(40), dp(46))
+                setOnClickListener {
+                    performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                    playSoundEffect(SoundEffectConstants.CLICK)
+                    emitLetter(alt)
+                    alternatesPopup?.dismiss()
+                }
+            })
+        }
+        val popup = PopupWindow(row, LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
+            isClippingEnabled = false
+            isOutsideTouchable = true
+            setBackgroundDrawable(GradientDrawable())
+        }
+        alternatesPopup = popup
+        val location = IntArray(2)
+        anchor.getLocationInWindow(location)
+        val x = location[0]
+        val y = location[1] - dp(46 + 12)
+        popup.showAtLocation(this, Gravity.NO_GRAVITY, x, y)
+    }
+
+    // endregion
+
+    // region Swipe typing
+
+    private fun maybeStartSwipe(view: Button, c: Char, event: MotionEvent): Boolean {
+        val dx = event.rawX - swipeStartX
+        val dy = event.rawY - swipeStartY
+        if (dx * dx + dy * dy < dp(SWIPE_START_DP) * dp(SWIPE_START_DP)) return false
+        swipePath = StringBuilder().append(c)
+        letterBounds = letterKeys.map { (button, char) ->
+            val location = IntArray(2)
+            button.getLocationOnScreen(location)
+            Rect(location[0], location[1], location[0] + button.width, location[1] + button.height) to char
+        }
+        preview.dismiss()
+        view.cancelLongPress()
+        // Release the key that received DOWN so it neither clicks nor stays
+        // visually pressed for the rest of the gesture.
+        val cancel = MotionEvent.obtain(event)
+        cancel.action = MotionEvent.ACTION_CANCEL
+        view.onTouchEvent(cancel)
+        cancel.recycle()
+        return true
+    }
+
+    private fun trackSwipe(event: MotionEvent) {
+        val path = swipePath ?: return
+        val hit = letterBounds.firstOrNull { (rect, _) ->
+            rect.contains(event.rawX.toInt(), event.rawY.toInt())
+        } ?: return
+        if (path.last() != hit.second) path.append(hit.second)
+    }
+
+    private fun finishSwipe(event: MotionEvent) {
+        trackSwipe(event)
+        val path = swipePath?.toString().orEmpty()
+        swipePath = null
+        if (path.toSet().size >= 2) {
+            performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+            listener?.onSwipe(path)
+        }
+    }
+
+    // endregion
+
     // region Key + row builders
 
     private fun page(block: LinearLayout.() -> Unit): LinearLayout =
@@ -418,10 +601,31 @@ class KeyboardView(context: Context) : LinearLayout(context) {
         }
 
     private fun letterKey(c: Char): Button =
-        key(c.toString(), showPreview = true) { emitLetter(c) }.also { letterKeys += it to c }
+        key(c.toString(), showPreview = true, swipeChar = c) { emitLetter(c) }
+            .also { button ->
+                letterKeys += button to c
+                if (ALTERNATES.containsKey(c)) {
+                    button.setOnLongClickListener {
+                        if (swipePath == null) {
+                            performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                            showAlternates(button, c)
+                            true
+                        } else false
+                    }
+                }
+            }
 
     private fun charKey(c: Char): Button =
         key(c.toString(), showPreview = true) { listener?.onCharacter(c) }
+            .also { button ->
+                if (ALTERNATES.containsKey(c)) {
+                    button.setOnLongClickListener {
+                        performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                        showAlternates(button, c)
+                        true
+                    }
+                }
+            }
 
     private fun specialKey(label: String, weight: Float = 1f, onClick: () -> Unit): Button =
         key(
@@ -475,6 +679,7 @@ class KeyboardView(context: Context) : LinearLayout(context) {
         flat: Boolean = false,
         pill: Boolean = false,
         showPreview: Boolean = false,
+        swipeChar: Char? = null,
         sound: Int = SoundEffectConstants.CLICK,
         onClick: () -> Unit,
     ): Button = Button(context, null, 0).apply {
@@ -499,13 +704,42 @@ class KeyboardView(context: Context) : LinearLayout(context) {
             playSoundEffect(sound)
             onClick()
         }
-        if (showPreview) {
+        if (showPreview || swipeChar != null) {
             setOnTouchListener { view, event ->
                 when (event.actionMasked) {
-                    MotionEvent.ACTION_DOWN -> showPreview(view as Button)
-                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> preview.dismiss()
+                    MotionEvent.ACTION_DOWN -> {
+                        if (showPreview) showPreview(view as Button)
+                        swipeStartX = event.rawX
+                        swipeStartY = event.rawY
+                        view.onTouchEvent(event)
+                    }
+                    MotionEvent.ACTION_MOVE -> {
+                        if (swipeChar != null && swipePath == null) {
+                            maybeStartSwipe(view as Button, swipeChar, event)
+                        }
+                        if (swipePath != null && swipeChar != null) {
+                            trackSwipe(event)
+                            true
+                        } else {
+                            view.onTouchEvent(event)
+                        }
+                    }
+                    MotionEvent.ACTION_UP -> {
+                        preview.dismiss()
+                        if (swipePath != null && swipeChar != null) {
+                            finishSwipe(event)
+                            true
+                        } else {
+                            view.onTouchEvent(event)
+                        }
+                    }
+                    MotionEvent.ACTION_CANCEL -> {
+                        preview.dismiss()
+                        swipePath = null
+                        view.onTouchEvent(event)
+                    }
+                    else -> view.onTouchEvent(event)
                 }
-                view.onTouchEvent(event)
             }
         }
     }
@@ -561,6 +795,23 @@ class KeyboardView(context: Context) : LinearLayout(context) {
         const val DOUBLE_TAP_MS = 350L
         const val BACKSPACE_REPEAT_MS = 60L
         const val MESSAGE_MS = 1800L
+        const val SWIPE_START_DP = 24
+
+        /** Long-press alternates per key. */
+        val ALTERNATES = mapOf(
+            'a' to "àáâäãå",
+            'c' to "ç",
+            'e' to "èéêë",
+            'g' to "ğ",
+            'i' to "ìíîï",
+            'n' to "ñ",
+            'o' to "òóôöõø",
+            's' to "śšß",
+            'u' to "ùúûü",
+            'y' to "ýÿ",
+            'z' to "žź",
+            '.' to "…?!,;:-",
+        )
 
         val EMOJIS = listOf(
             // Smileys
