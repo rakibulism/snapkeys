@@ -69,7 +69,7 @@ class KeyboardView(context: Context) : LinearLayout(context) {
     private fun buildPage(page: Page): LinearLayout = when (page) {
         Page.LETTERS -> buildLettersPage()
         Page.SYMBOLS -> buildSymbolsPage(
-            rows = listOf("1234567890", "@#$_&-+()/", "*\"':;!?"),
+            rows = listOf("1234567890", "@#\$_&-+()/", "*\"':;!?"),
             switchLabel = "=\\<",
             switchTarget = Page.SYMBOLS_ALT,
         )
