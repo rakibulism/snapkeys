@@ -5,6 +5,7 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
+  workflow_dispatch:
 
 jobs:
   build:
@@ -22,7 +23,13 @@ jobs:
         uses: gradle/actions/setup-gradle@v3
 
       - name: Run unit tests
-        run: gradle test
+        run: ./gradlew test
 
       - name: Assemble debug APK
-        run: gradle assembleDebug
+        run: ./gradlew assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: snapkeys-debug-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
