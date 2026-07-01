@@ -41,6 +41,36 @@ Ships with a few defaults (`brb`, `omw`, `ty`, `@@`) so you can try it immediate
 ./gradlew installDebug         # install onto a connected device/emulator
 ```
 
+## Encrypted sync with Google Drive
+
+Sign in with a Google account in the app and your shortcuts back up to Google
+Drive and follow you to any device you sign into.
+
+- **End-to-end encrypted**: the list is encrypted on-device (AES-256-GCM, key
+  derived from your sync passphrase with PBKDF2) before upload. Google only
+  stores an opaque blob. The same passphrase on another device decrypts it —
+  and if you forget the passphrase, the synced data is unrecoverable by design.
+- **Private app storage**: data lives in Drive's hidden per-app folder
+  (`drive.appdata` scope). SnapKeys can't see your Drive files, and other apps
+  can't see SnapKeys data.
+- Sync runs when you open the app and right after saving a snippet from the
+  keyboard; the most recently changed side wins.
+
+### One-time developer setup (required for sign-in to work)
+
+Google Sign-In needs an OAuth client registered to this app's signature:
+
+1. In [Google Cloud Console](https://console.cloud.google.com/), create a
+   project and enable the **Google Drive API**.
+2. Configure the OAuth consent screen (External, add your account as a test
+   user) and add the scope `https://www.googleapis.com/auth/drive.appdata`.
+3. Create an **OAuth client ID → Android** with:
+   - Package name: `com.snapkeys.app`
+   - SHA-1: `C4:4E:4B:A8:4A:EF:15:FC:99:2F:46:35:D9:AE:45:BF:E5:65:9C:35`
+     (the committed `app/debug.p12` signing key; if you switch keys, update this)
+
+No client ID goes in the code — Google matches the app by package + signature.
+
 ## Roadmap
 
 - [x] Symbols / numbers pages and emoji picker

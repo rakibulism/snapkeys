@@ -22,9 +22,29 @@ class ShortcutStore private constructor(private val prefs: SharedPreferences) {
     }
 
     fun save(shortcuts: List<Shortcut>) {
+        write(shortcuts, System.currentTimeMillis())
+    }
+
+    /** When this device's list last changed (0 = never; used by sync). */
+    fun modifiedAt(): Long = prefs.getLong(KEY_MODIFIED_AT, 0L)
+
+    /** Adopt the synced remote list without counting it as a local edit. */
+    fun replaceAll(shortcuts: List<Shortcut>, syncedAt: Long) {
+        write(shortcuts, syncedAt)
+    }
+
+    /** After an upload: align the local clock with the remote file's. */
+    fun markSynced(syncedAt: Long) {
+        prefs.edit().putLong(KEY_MODIFIED_AT, syncedAt).apply()
+    }
+
+    private fun write(shortcuts: List<Shortcut>, modifiedAt: Long) {
         val array = JSONArray()
         shortcuts.forEach { array.put(it.toJson()) }
-        prefs.edit().putString(KEY_SHORTCUTS, array.toString()).apply()
+        prefs.edit()
+            .putString(KEY_SHORTCUTS, array.toString())
+            .putLong(KEY_MODIFIED_AT, modifiedAt)
+            .apply()
     }
 
     fun upsert(shortcut: Shortcut, replacing: String? = null) {
@@ -49,6 +69,7 @@ class ShortcutStore private constructor(private val prefs: SharedPreferences) {
     companion object {
         private const val PREFS_NAME = "snapkeys_shortcuts"
         private const val KEY_SHORTCUTS = "shortcuts_json"
+        private const val KEY_MODIFIED_AT = "shortcuts_modified_at"
 
         fun get(context: Context): ShortcutStore {
             val prefs = context.applicationContext

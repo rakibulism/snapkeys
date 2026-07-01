@@ -7,6 +7,7 @@ import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import com.snapkeys.app.data.Shortcut
 import com.snapkeys.app.data.ShortcutStore
+import com.snapkeys.app.sync.SyncManager
 
 /**
  * The SnapKeys keyboard. Once enabled in system settings and selected as the
@@ -202,6 +203,9 @@ class SnapKeysService : InputMethodService(), KeyboardView.Listener {
         reloadShortcuts()
         onSnippetCancel()
         keyboardView?.flashToolbarMessage("✓ Saved — $trigger now expands to it")
+        // Back up right away if Drive sync is set up; errors are non-fatal
+        // here and will surface on the next sync from the app.
+        SyncManager.get(this).syncInBackground()
     }
 
     override fun onSnippetCancel() {

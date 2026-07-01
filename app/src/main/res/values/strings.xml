@@ -16,4 +16,18 @@
 
     <string name="error_trigger_required">Enter a trigger</string>
     <string name="error_expansion_required">Enter what it expands to</string>
+
+    <string name="sync_status_off">Backup &amp; sync: off</string>
+    <string name="sync_status_needs_passphrase">%1$s — set a sync passphrase to finish</string>
+    <string name="sync_status_on">Synced with %1$s</string>
+    <string name="sync_sign_in">Sign in</string>
+    <string name="sync_set_passphrase">Set passphrase</string>
+    <string name="sync_now">Sync now</string>
+    <string name="sync_passphrase_title">Sync passphrase</string>
+    <string name="sync_passphrase_message">Your shortcuts are encrypted with this passphrase before they leave the device — Google only stores scrambled data. Use the same passphrase on your other devices to unlock them there. If you forget it, synced data can\'t be recovered.</string>
+    <string name="sync_passphrase_hint">Passphrase</string>
+    <string name="sync_sign_out_title">Stop syncing?</string>
+    <string name="sync_sign_out_message">This signs out on this device only. Shortcuts stay here, and the encrypted backup stays in your Google Drive.</string>
+    <string name="sync_sign_out">Sign out</string>
+    <string name="cancel">Cancel</string>
 </resources>
