@@ -15,13 +15,30 @@ android {
         versionName = "0.1.0"
     }
 
+    // Fixed signing key committed to the repo so every CI build is signed
+    // identically — otherwise each runner generates a fresh debug key and
+    // Android refuses to update an installed copy (signature mismatch).
+    signingConfigs {
+        create("shared") {
+            storeFile = file("debug.p12")
+            storeType = "pkcs12"
+            storePassword = "android"
+            keyAlias = "snapkeys"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("shared")
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            signingConfig = signingConfigs.getByName("shared")
         }
     }
 
