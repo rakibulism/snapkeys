@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Declares SnapKeys as an input method to the system. -->
+<input-method xmlns:android="http://schemas.android.com/apk/res/android"
+    android:settingsActivity="com.snapkeys.app.ui.MainActivity"
+    android:supportsSwitchingToNextInputMethod="true">
+    <subtype
+        android:name="@string/keyboard_name"
+        android:imeSubtypeMode="keyboard" />
+</input-method>

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">SnapKeys</string>
+    <string name="keyboard_name">SnapKeys Keyboard</string>
+
+    <string name="title_edit_shortcut">Edit shortcut</string>
+    <string name="add_shortcut">Add shortcut</string>
+    <string name="enable_keyboard">Enable SnapKeys keyboard</string>
+    <string name="empty_state">No shortcuts yet.\nTap “Add shortcut” to create your first typo shortcut.</string>
+
+    <string name="hint_trigger">Trigger (e.g. brb)</string>
+    <string name="hint_expansion">Expands to (e.g. be right back)</string>
+    <string name="save">Save</string>
+    <string name="delete">Delete</string>
+    <string name="saved">Saved</string>
+
+    <string name="error_trigger_required">Enter a trigger</string>
+    <string name="error_expansion_required">Enter what it expands to</string>
+</resources>
