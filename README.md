@@ -6,6 +6,9 @@ Type `brb` + space and it becomes `be right back`. Type `@@` and it becomes your
 
 > Status: early scaffold. The core expansion engine, storage, keyboard service, and management UI are in place. The on-screen key layout is intentionally minimal and meant to be extended.
 
+### Download
+https://github.com/rakibulism/snapkeys/actions/runs/28543516880/artifacts/8020931059
+
 ## How it works
 
 - **`ime/SnapKeysService`** — an `InputMethodService` registered with the system. When enabled and selected, it becomes the active keyboard across the whole device.
