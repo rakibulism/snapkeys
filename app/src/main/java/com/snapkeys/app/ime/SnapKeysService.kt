@@ -5,6 +5,7 @@ import android.os.Build
 import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
+import com.snapkeys.app.data.Shortcut
 import com.snapkeys.app.data.ShortcutStore
 
 /**
@@ -19,6 +20,11 @@ class SnapKeysService : InputMethodService(), KeyboardView.Listener {
 
     private lateinit var engine: ExpansionEngine
     private var keyboardView: KeyboardView? = null
+
+    // Snippet capture: while non-null, key presses type the trigger for this
+    // snippet in the keyboard's toolbar instead of going to the editor.
+    private var snippetCapture: String? = null
+    private val triggerBuffer = StringBuilder()
 
     override fun onCreate() {
         super.onCreate()
@@ -38,6 +44,8 @@ class SnapKeysService : InputMethodService(), KeyboardView.Listener {
 
     override fun onStartInputView(editorInfo: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(editorInfo, restarting)
+        // A different field means the captured text is gone — drop the flow.
+        if (snippetCapture != null) onSnippetCancel()
         updateAutoShift()
     }
 
@@ -63,6 +71,11 @@ class SnapKeysService : InputMethodService(), KeyboardView.Listener {
     // region KeyboardView.Listener
 
     override fun onCharacter(c: Char) {
+        if (snippetCapture != null) {
+            // Delimiters can never appear in a trigger — the engine splits on them.
+            if (!ExpansionEngine.isDelimiter(c)) appendToTrigger(c.toString())
+            return
+        }
         val ic = currentInputConnection ?: return
         // Run expansion when a delimiter finishes the preceding word.
         if (ExpansionEngine.isDelimiter(c)) {
@@ -82,11 +95,26 @@ class SnapKeysService : InputMethodService(), KeyboardView.Listener {
     }
 
     override fun onText(text: String) {
+        if (snippetCapture != null) {
+            appendToTrigger(text)
+            return
+        }
         currentInputConnection?.commitText(text, 1)
         updateAutoShift()
     }
 
     override fun onBackspace() {
+        if (snippetCapture != null) {
+            if (triggerBuffer.isNotEmpty()) {
+                val len = triggerBuffer.length
+                val units = if (len >= 2 &&
+                    Character.isSurrogatePair(triggerBuffer[len - 2], triggerBuffer[len - 1])
+                ) 2 else 1
+                triggerBuffer.setLength(len - units)
+                keyboardView?.setSnippetTrigger(triggerBuffer.toString())
+            }
+            return
+        }
         val ic = currentInputConnection ?: return
         val selected = ic.getSelectedText(0)
         if (!selected.isNullOrEmpty()) {
@@ -107,6 +135,10 @@ class SnapKeysService : InputMethodService(), KeyboardView.Listener {
     }
 
     override fun onEnter() {
+        if (snippetCapture != null) {
+            onSnippetConfirm()
+            return
+        }
         val ic = currentInputConnection ?: return
         // Expand a pending trigger before submitting the line.
         val before = ic.getTextBeforeCursor(MAX_LOOKBEHIND, 0) ?: ""
@@ -140,6 +172,50 @@ class SnapKeysService : InputMethodService(), KeyboardView.Listener {
         imm().showInputMethodPicker()
     }
 
+    override fun onSaveSnippetTapped() {
+        val ic = currentInputConnection ?: return
+        // Prefer an explicit selection; fall back to the line being written.
+        val selected = ic.getSelectedText(0)?.toString()?.trim()
+        val text = if (!selected.isNullOrBlank()) {
+            selected
+        } else {
+            (ic.getTextBeforeCursor(SNIPPET_LOOKBEHIND, 0) ?: "")
+                .toString().substringAfterLast('\n').trim()
+        }
+        if (text.isBlank()) {
+            keyboardView?.flashToolbarMessage("Select or write some text first")
+            return
+        }
+        snippetCapture = text
+        triggerBuffer.clear()
+        keyboardView?.enterSnippetMode(text)
+    }
+
+    override fun onSnippetConfirm() {
+        val text = snippetCapture ?: return
+        val trigger = triggerBuffer.toString()
+        if (trigger.isEmpty()) {
+            keyboardView?.flashToolbarMessage("Type a trigger first")
+            return
+        }
+        ShortcutStore.get(this).upsert(Shortcut(trigger, text))
+        reloadShortcuts()
+        onSnippetCancel()
+        keyboardView?.flashToolbarMessage("✓ Saved — $trigger now expands to it")
+    }
+
+    override fun onSnippetCancel() {
+        snippetCapture = null
+        triggerBuffer.clear()
+        keyboardView?.exitSnippetMode()
+    }
+
+    private fun appendToTrigger(text: String) {
+        if (triggerBuffer.length + text.length > MAX_TRIGGER_LENGTH) return
+        triggerBuffer.append(text)
+        keyboardView?.setSnippetTrigger(triggerBuffer.toString())
+    }
+
     private fun imm(): InputMethodManager =
         getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
 
@@ -148,5 +224,10 @@ class SnapKeysService : InputMethodService(), KeyboardView.Listener {
     companion object {
         /** Longest trigger we ever need to look back for. */
         private const val MAX_LOOKBEHIND = 64
+
+        /** How far back to scan when capturing a snippet from the editor. */
+        private const val SNIPPET_LOOKBEHIND = 1000
+
+        private const val MAX_TRIGGER_LENGTH = 24
     }
 }

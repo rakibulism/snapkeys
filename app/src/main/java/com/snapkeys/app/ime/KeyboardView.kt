@@ -8,6 +8,7 @@ import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.RippleDrawable
 import android.os.SystemClock
+import android.text.TextUtils
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.HapticFeedbackConstants
@@ -15,6 +16,7 @@ import android.view.MotionEvent
 import android.view.SoundEffectConstants
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.FrameLayout
 import android.widget.GridLayout
 import android.widget.LinearLayout
 import android.widget.PopupWindow
@@ -49,6 +51,15 @@ class KeyboardView(context: Context) : LinearLayout(context) {
 
         /** Globe key long-press: show the system keyboard picker. */
         fun onImePicker()
+
+        /** Toolbar "save snippet" tapped: capture text from the editor. */
+        fun onSaveSnippetTapped()
+
+        /** Snippet capture confirmed (✓ or enter). */
+        fun onSnippetConfirm()
+
+        /** Snippet capture dismissed (✕). */
+        fun onSnippetCancel()
     }
 
     var listener: Listener? = null
@@ -117,12 +128,117 @@ class KeyboardView(context: Context) : LinearLayout(context) {
         animationStyle = 0
     }
 
+    // Toolbar strip above the keys (Gboard-style), hosting the snippet flow.
+    private lateinit var toolbarTitle: TextView
+    private lateinit var normalBar: LinearLayout
+    private lateinit var captureBar: LinearLayout
+    private lateinit var snippetPreview: TextView
+    private lateinit var triggerView: TextView
+    private val pageContainer = LinearLayout(context).apply { orientation = VERTICAL }
+
     init {
         orientation = VERTICAL
         setBackgroundColor(palette.background)
-        setPadding(dp(3), dp(5), dp(3), dp(7))
+        setPadding(dp(3), 0, dp(3), dp(7))
+        addView(buildToolbar())
+        addView(pageContainer)
         switchTo(Page.LETTERS)
     }
+
+    // region Toolbar + snippet capture UI
+
+    /** Show the capture strip: [snippet preview / trigger being typed] ✕ ✓. */
+    fun enterSnippetMode(snippet: String) {
+        snippetPreview.text = snippet.replace('\n', ' ')
+        setSnippetTrigger("")
+        normalBar.visibility = GONE
+        captureBar.visibility = VISIBLE
+        switchTo(Page.LETTERS)
+    }
+
+    fun setSnippetTrigger(trigger: String) {
+        triggerView.text = if (trigger.isEmpty()) "type a trigger…" else "$trigger▏"
+        triggerView.setTextColor(if (trigger.isEmpty()) palette.hint else palette.keyText)
+    }
+
+    fun exitSnippetMode() {
+        captureBar.visibility = GONE
+        normalBar.visibility = VISIBLE
+    }
+
+    /** Briefly show [message] in the toolbar, then restore the app name. */
+    fun flashToolbarMessage(message: String) {
+        toolbarTitle.text = message
+        toolbarTitle.setTextColor(palette.keyText)
+        toolbarTitle.postDelayed({
+            toolbarTitle.text = "SnapKeys"
+            toolbarTitle.setTextColor(palette.hint)
+        }, MESSAGE_MS)
+    }
+
+    private fun buildToolbar(): FrameLayout = FrameLayout(context).apply {
+        layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, dp(TOOLBAR_HEIGHT_DP))
+
+        toolbarTitle = TextView(context).apply {
+            text = "SnapKeys"
+            setTextColor(palette.hint)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(14), 0, 0, 0)
+            isSingleLine = true
+            ellipsize = TextUtils.TruncateAt.END
+        }
+        normalBar = LinearLayout(context).apply {
+            orientation = HORIZONTAL
+            addView(toolbarTitle, LinearLayout.LayoutParams(0, LayoutParams.MATCH_PARENT, 1f))
+            addView(flatBar("🔖 Save snippet", palette.accent) { listener?.onSaveSnippetTapped() })
+        }
+        captureBar = LinearLayout(context).apply {
+            orientation = HORIZONTAL
+            visibility = GONE
+            addView(flatBar("✕", palette.specialText) { listener?.onSnippetCancel() })
+            addView(LinearLayout(context).apply {
+                orientation = VERTICAL
+                gravity = Gravity.CENTER_VERTICAL
+                snippetPreview = TextView(context).apply {
+                    setTextColor(palette.hint)
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+                    isSingleLine = true
+                    ellipsize = TextUtils.TruncateAt.END
+                }
+                triggerView = TextView(context).apply {
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
+                    typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+                    isSingleLine = true
+                }
+                addView(snippetPreview)
+                addView(triggerView)
+            }, LinearLayout.LayoutParams(0, LayoutParams.MATCH_PARENT, 1f))
+            addView(flatBar("✓ Save", palette.accent) { listener?.onSnippetConfirm() })
+        }
+        addView(normalBar, FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+        addView(captureBar, FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+    }
+
+    private fun flatBar(label: String, color: Int, onClick: () -> Unit): Button =
+        Button(context, null, 0).apply {
+            text = label
+            isAllCaps = false
+            setTextColor(color)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+            gravity = Gravity.CENTER
+            setPadding(dp(14), 0, dp(14), 0)
+            background = rippleOnly()
+            layoutParams = LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.MATCH_PARENT)
+            setOnClickListener {
+                performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                onClick()
+            }
+        }
+
+    // endregion
 
     /**
      * Auto-capitalization hook for the service: raises shift at sentence
@@ -147,8 +263,8 @@ class KeyboardView(context: Context) : LinearLayout(context) {
     // region Pages
 
     private fun switchTo(page: Page) {
-        removeAllViews()
-        addView(pages.getOrPut(page) { buildPage(page) })
+        pageContainer.removeAllViews()
+        pageContainer.addView(pages.getOrPut(page) { buildPage(page) })
     }
 
     private fun buildPage(page: Page): LinearLayout = when (page) {
@@ -440,9 +556,11 @@ class KeyboardView(context: Context) : LinearLayout(context) {
 
     private companion object {
         const val ROW_HEIGHT_DP = 54
+        const val TOOLBAR_HEIGHT_DP = 44
         const val EMOJI_COLUMNS = 8
         const val DOUBLE_TAP_MS = 350L
         const val BACKSPACE_REPEAT_MS = 60L
+        const val MESSAGE_MS = 1800L
 
         val EMOJIS = listOf(
             // Smileys
