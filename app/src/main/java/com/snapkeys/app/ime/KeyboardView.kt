@@ -145,10 +145,11 @@ class KeyboardView(context: Context) : LinearLayout(context) {
     // Long-press alternates popup.
     private var alternatesPopup: PopupWindow? = null
 
-    // Emoji recents, persisted across keyboard sessions.
+    // Emoji page: category tabs + recents persisted across sessions.
     private val uiPrefs = context.getSharedPreferences("snapkeys_ui", Context.MODE_PRIVATE)
-    private var recentsGrid: GridLayout? = null
-    private var recentsHeader: TextView? = null
+    private var emojiContentGrid: GridLayout? = null
+    private var emojiTabs: List<Button> = emptyList()
+    private var currentEmojiTab = 0 // 0 = recents, 1.. = EMOJI_CATEGORIES
 
     // Swipe typing state: non-null while a gesture is in flight.
     private var swipePath: StringBuilder? = null
@@ -364,7 +365,11 @@ class KeyboardView(context: Context) : LinearLayout(context) {
     private fun switchTo(page: Page) {
         pageContainer.removeAllViews()
         pageContainer.addView(pages.getOrPut(page) { buildPage(page) })
-        if (page == Page.EMOJI) refreshRecentEmojis()
+        if (page == Page.EMOJI) {
+            // Land on recents when there are any, else the first category.
+            val tab = if (currentEmojiTab == 0 && loadRecentEmojis().isEmpty()) 1 else currentEmojiTab
+            selectEmojiTab(tab)
+        }
     }
 
     private fun buildPage(page: Page): LinearLayout = when (page) {
@@ -417,17 +422,33 @@ class KeyboardView(context: Context) : LinearLayout(context) {
     }
 
     private fun buildEmojiPage(): LinearLayout = page {
-        recentsHeader = sectionLabel("Recents")
-        recentsGrid = emojiGrid()
-        val content = LinearLayout(context).apply {
-            orientation = VERTICAL
-            addView(recentsHeader)
-            addView(recentsGrid)
-            addView(emojiGrid().apply { EMOJIS.forEach { addView(emojiCell(it)) } })
+        val tabLabels = listOf("🕘") + EMOJI_CATEGORIES.map { it.first }
+        val tabStrip = LinearLayout(context).apply {
+            orientation = HORIZONTAL
+            layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, dp(EMOJI_TAB_HEIGHT_DP))
         }
+        emojiTabs = tabLabels.mapIndexed { index, label ->
+            Button(context, null, 0).apply {
+                text = label
+                gravity = Gravity.CENTER
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
+                setPadding(0, 0, 0, 0)
+                background = rippleOnly()
+                layoutParams = LayoutParams(0, LayoutParams.MATCH_PARENT, 1f)
+                setOnClickListener { selectEmojiTab(index) }
+            }.also(tabStrip::addView)
+        }
+        emojiContentGrid = GridLayout(context).apply {
+            columnCount = EMOJI_COLUMNS
+            layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)
+        }
+        addView(tabStrip)
         addView(ScrollView(context).apply {
-            layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, dp(ROW_HEIGHT_DP * 4))
-            addView(content)
+            layoutParams = LayoutParams(
+                LayoutParams.MATCH_PARENT,
+                dp(ROW_HEIGHT_DP * 4 - EMOJI_TAB_HEIGHT_DP),
+            )
+            addView(emojiContentGrid)
         })
         addView(row {
             addView(specialKey("ABC", weight = 1.5f) { switchTo(Page.LETTERS) })
@@ -436,9 +457,15 @@ class KeyboardView(context: Context) : LinearLayout(context) {
         })
     }
 
-    private fun emojiGrid(): GridLayout = GridLayout(context).apply {
-        columnCount = EMOJI_COLUMNS
-        layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)
+    private fun selectEmojiTab(index: Int) {
+        currentEmojiTab = index
+        emojiTabs.forEachIndexed { i, tab ->
+            tab.background = if (i == index) keyBackground(palette.special) else rippleOnly()
+        }
+        val grid = emojiContentGrid ?: return
+        grid.removeAllViews()
+        val emojis = if (index == 0) loadRecentEmojis() else EMOJI_CATEGORIES[index - 1].second
+        emojis.forEach { grid.addView(emojiCell(it)) }
     }
 
     private fun emojiCell(emoji: String): Button =
@@ -451,23 +478,6 @@ class KeyboardView(context: Context) : LinearLayout(context) {
                 GridLayout.spec(GridLayout.UNDEFINED, 1f),
             ).apply { width = 0; height = dp(48) }
         }
-
-    private fun sectionLabel(text: String): TextView = TextView(context).apply {
-        this.text = text
-        setTextColor(palette.hint)
-        setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
-        typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
-        setPadding(dp(10), dp(6), 0, dp(2))
-    }
-
-    private fun refreshRecentEmojis() {
-        val grid = recentsGrid ?: return
-        val recents = loadRecentEmojis()
-        recentsHeader?.visibility = if (recents.isEmpty()) GONE else VISIBLE
-        grid.visibility = if (recents.isEmpty()) GONE else VISIBLE
-        grid.removeAllViews()
-        recents.forEach { grid.addView(emojiCell(it)) }
-    }
 
     private fun loadRecentEmojis(): List<String> =
         uiPrefs.getString(KEY_EMOJI_RECENTS, null)
@@ -912,6 +922,7 @@ class KeyboardView(context: Context) : LinearLayout(context) {
         const val CURSOR_STEP_DP = 14
         const val MAX_RECENT_EMOJIS = 16
         const val KEY_EMOJI_RECENTS = "emoji_recents"
+        const val EMOJI_TAB_HEIGHT_DP = 40
 
         /** Long-press alternates per key. */
         val ALTERNATES = mapOf(
@@ -929,26 +940,34 @@ class KeyboardView(context: Context) : LinearLayout(context) {
             '.' to "…?!,;:-",
         )
 
-        val EMOJIS = listOf(
-            // Smileys
-            "😀", "😁", "😂", "🤣", "😊", "😇", "🙂", "😉", "😍", "🥰", "😘", "😜",
-            "🤪", "🤔", "🤨", "😐", "😴", "🥱", "😎", "🥳", "😅", "😬", "🙄", "😢",
-            "😭", "😤", "😡", "🤯", "😱", "🤗", "🤫", "🤤", "😷", "🤒", "🥺", "😳",
-            // Gestures & people
-            "👍", "👎", "👌", "✌️", "🤞", "🫶", "🤝", "👏", "🙌", "🙏", "💪", "👋",
-            "🤙", "👉", "👈", "👆", "👇", "🖐️", "✊", "🤘",
-            // Hearts & symbols
-            "❤️", "🧡", "💛", "💚", "💙", "💜", "🖤", "🤍", "💔", "❣️", "💕", "💯",
-            "✨", "🔥", "⭐", "🌈", "✅", "❌", "❓", "❗", "💡", "🔔",
-            // Celebration & activities
-            "🎉", "🎂", "🎁", "🎵", "🎮", "⚽", "🏀", "🏆", "🎯", "🎬",
-            // Nature & animals
-            "🌹", "🌞", "🌙", "🌍", "🌊", "🐶", "🐱", "🐼", "🦊", "🐸", "🐵", "🦁",
-            "🙈", "🙉", "🙊", "🦄",
-            // Food & drink
-            "☕", "🍕", "🍔", "🍟", "🍦", "🍫", "🍎", "🍌", "🥑", "🍩", "🍿", "🧋",
-            // Objects & travel
-            "🚗", "✈️", "🏠", "📱", "💻", "⌚", "📚", "💰", "🛒", "📷",
+        /** Tab icon → emojis. The recents tab (🕘) is prepended at build time. */
+        val EMOJI_CATEGORIES: List<Pair<String, List<String>>> = listOf(
+            "😀" to listOf(
+                "😀", "😁", "😂", "🤣", "😊", "😇", "🙂", "😉", "😍", "🥰", "😘", "😜",
+                "🤪", "🤔", "🤨", "😐", "😴", "🥱", "😎", "🥳", "😅", "😬", "🙄", "😢",
+                "😭", "😤", "😡", "🤯", "😱", "🤗", "🤫", "🤤", "😷", "🤒", "🥺", "😳",
+            ),
+            "👍" to listOf(
+                "👍", "👎", "👌", "✌️", "🤞", "🫶", "🤝", "👏", "🙌", "🙏", "💪", "👋",
+                "🤙", "👉", "👈", "👆", "👇", "🖐️", "✊", "🤘",
+            ),
+            "❤️" to listOf(
+                "❤️", "🧡", "💛", "💚", "💙", "💜", "🖤", "🤍", "💔", "❣️", "💕", "💯",
+                "✨", "🔥", "⭐", "🌈", "✅", "❌", "❓", "❗", "💡", "🔔",
+            ),
+            "🎉" to listOf(
+                "🎉", "🎂", "🎁", "🎵", "🎮", "⚽", "🏀", "🏆", "🎯", "🎬",
+            ),
+            "🐼" to listOf(
+                "🌹", "🌞", "🌙", "🌍", "🌊", "🐶", "🐱", "🐼", "🦊", "🐸", "🐵", "🦁",
+                "🙈", "🙉", "🙊", "🦄",
+            ),
+            "🍕" to listOf(
+                "☕", "🍕", "🍔", "🍟", "🍦", "🍫", "🍎", "🍌", "🥑", "🍩", "🍿", "🧋",
+            ),
+            "🚗" to listOf(
+                "🚗", "✈️", "🏠", "📱", "💻", "⌚", "📚", "💰", "🛒", "📷",
+            ),
         )
     }
 }

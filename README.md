@@ -96,7 +96,7 @@ No client ID goes in the code — Google matches the app by package + signature.
 ## Roadmap
 
 - [ ] Smarter swipe typing (language-model scoring instead of path matching)
-- [ ] Emoji search and category tabs
+- [ ] Emoji search
 - [ ] Custom themes (colors, key shapes, backgrounds)
 - [ ] Multilingual dictionaries and layouts
 - [ ] Voice input key
