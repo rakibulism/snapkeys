@@ -62,6 +62,26 @@ class WordPredictorTest {
     }
 
     @Test
+    fun `gesture ranks by frequency at equal length`() {
+        // Both fit the c…e path at length 4; "came" is more common.
+        val local = WordPredictor(listOf("came", "cake"))
+        assertEquals("came", local.gesture("cakme").first())
+    }
+
+    @Test
+    fun `gesture prefers the user's own words at equal length`() {
+        val local = WordPredictor(listOf("came", "cake"))
+        local.learn("cake")
+        assertEquals("cake", local.gesture("cakme").first())
+    }
+
+    @Test
+    fun `gesture still prefers the longer word over a nearby shorter one`() {
+        val local = WordPredictor(listOf("he", "here"))
+        assertEquals("here", local.gesture("hgerte").first())
+    }
+
+    @Test
     fun `learned words survive export and import`() {
         predictor.learn("zebra")
         val fresh = WordPredictor(listOf("the"))
