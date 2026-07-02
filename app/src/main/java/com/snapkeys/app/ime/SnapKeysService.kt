@@ -1,5 +1,6 @@
 package com.snapkeys.app.ime
 
+import android.content.ClipboardManager
 import android.inputmethodservice.InputMethodService
 import android.os.Build
 import android.view.KeyEvent
@@ -38,6 +39,10 @@ class SnapKeysService : InputMethodService(), KeyboardView.Listener {
     // snippet in the keyboard's toolbar instead of going to the editor.
     private var snippetCapture: String? = null
     private val triggerBuffer = StringBuilder()
+
+    // Clipboard chip: the last clip pasted (or otherwise dealt with) via the
+    // toolbar, so the chip disappears until something new is copied.
+    private var consumedClip: String? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -255,14 +260,27 @@ class SnapKeysService : InputMethodService(), KeyboardView.Listener {
         ic.deleteSurroundingText(suggestion.deleteBefore, 0)
         ic.commitText(suggestion.commit, 1)
         ic.endBatchEdit()
-        predictor?.let {
-            val word = suggestion.commit.trim()
-            if (word.all { c -> c.isLetter() }) {
-                it.learn(word)
-                persistLearnedWords(it)
+        if (suggestion.deleteBefore == 0) {
+            // It was the clipboard chip; retire it until a new copy happens.
+            consumedClip = suggestion.commit
+        } else {
+            predictor?.let {
+                val word = suggestion.commit.trim()
+                if (word.all { c -> c.isLetter() }) {
+                    it.learn(word)
+                    persistLearnedWords(it)
+                }
             }
         }
         afterEdit()
+    }
+
+    /** Fresh clipboard text worth offering, or null. */
+    private fun clipboardText(): String? {
+        val manager = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
+        val text = manager.primaryClip?.takeIf { it.itemCount > 0 }
+            ?.getItemAt(0)?.coerceToText(this)?.toString()
+        return text?.takeIf { it.isNotBlank() && it.length <= MAX_CLIP_LENGTH && it != consumedClip }
     }
 
     override fun onSwipe(path: String) {
@@ -305,7 +323,10 @@ class SnapKeysService : InputMethodService(), KeyboardView.Listener {
         val ic = currentInputConnection
         val word = if (ic != null) trailingWord(ic.getTextBeforeCursor(32, 0) ?: "") else ""
         currentSuggestions = if (word.isEmpty()) {
-            emptyList()
+            // Not composing a word: offer the fresh clipboard, Gboard-style.
+            clipboardText()?.let { clip ->
+                listOf(Suggestion("📋 " + clip.replace('\n', ' '), clip, 0))
+            } ?: emptyList()
         } else {
             buildList {
                 // The matching shortcut expansion always leads.
@@ -370,6 +391,9 @@ class SnapKeysService : InputMethodService(), KeyboardView.Listener {
         private const val SNIPPET_LOOKBEHIND = 1000
 
         private const val MAX_TRIGGER_LENGTH = 24
+
+        /** Clips longer than this are unlikely to be wanted as a chip. */
+        private const val MAX_CLIP_LENGTH = 500
 
         private const val PREDICTOR_PREFS = "snapkeys_predictor"
         private const val KEY_LEARNED = "learned_words"
