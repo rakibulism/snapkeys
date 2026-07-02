@@ -3,6 +3,7 @@ package com.snapkeys.app.ime
 import android.content.ClipboardManager
 import android.inputmethodservice.InputMethodService
 import android.os.Build
+import android.os.SystemClock
 import android.view.KeyEvent
 import android.view.View
 import android.view.inputmethod.EditorInfo
@@ -178,7 +179,31 @@ class SnapKeysService : InputMethodService(), KeyboardView.Listener {
         afterEdit()
     }
 
-    override fun onSpace() = onCharacter(' ')
+    override fun onSpace() {
+        if (snippetCapture == null && maybeDoubleSpacePeriod()) return
+        onCharacter(' ')
+    }
+
+    private var lastSpaceAtMs = 0L
+
+    /** Gboard reflex: two quick space taps after a word become ". ". */
+    private fun maybeDoubleSpacePeriod(): Boolean {
+        val now = SystemClock.uptimeMillis()
+        val quickSecondTap = now - lastSpaceAtMs < DOUBLE_SPACE_MS
+        lastSpaceAtMs = now
+        if (!quickSecondTap) return false
+        val ic = currentInputConnection ?: return false
+        val before = ic.getTextBeforeCursor(2, 0) ?: return false
+        if (before.length < 2 || before.last() != ' ') return false
+        if (!before[before.length - 2].isLetterOrDigit()) return false
+        ic.beginBatchEdit()
+        ic.deleteSurroundingText(1, 0)
+        ic.commitText(". ", 1)
+        ic.endBatchEdit()
+        lastSpaceAtMs = 0L
+        afterEdit()
+        return true
+    }
 
     override fun onCursorMove(steps: Int) {
         if (snippetCapture != null) return
@@ -394,6 +419,8 @@ class SnapKeysService : InputMethodService(), KeyboardView.Listener {
 
         /** Clips longer than this are unlikely to be wanted as a chip. */
         private const val MAX_CLIP_LENGTH = 500
+
+        private const val DOUBLE_SPACE_MS = 500L
 
         private const val PREDICTOR_PREFS = "snapkeys_predictor"
         private const val KEY_LEARNED = "learned_words"

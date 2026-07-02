@@ -145,6 +145,11 @@ class KeyboardView(context: Context) : LinearLayout(context) {
     // Long-press alternates popup.
     private var alternatesPopup: PopupWindow? = null
 
+    // Emoji recents, persisted across keyboard sessions.
+    private val uiPrefs = context.getSharedPreferences("snapkeys_ui", Context.MODE_PRIVATE)
+    private var recentsGrid: GridLayout? = null
+    private var recentsHeader: TextView? = null
+
     // Swipe typing state: non-null while a gesture is in flight.
     private var swipePath: StringBuilder? = null
     private var swipeStartX = 0f
@@ -359,6 +364,7 @@ class KeyboardView(context: Context) : LinearLayout(context) {
     private fun switchTo(page: Page) {
         pageContainer.removeAllViews()
         pageContainer.addView(pages.getOrPut(page) { buildPage(page) })
+        if (page == Page.EMOJI) refreshRecentEmojis()
     }
 
     private fun buildPage(page: Page): LinearLayout = when (page) {
@@ -405,26 +411,66 @@ class KeyboardView(context: Context) : LinearLayout(context) {
     }
 
     private fun buildEmojiPage(): LinearLayout = page {
-        val grid = GridLayout(context).apply {
-            columnCount = EMOJI_COLUMNS
-            EMOJIS.forEach { emoji ->
-                addView(key(emoji, textSizeSp = 26f, flat = true) { listener?.onText(emoji) }.apply {
-                    layoutParams = GridLayout.LayoutParams(
-                        GridLayout.spec(GridLayout.UNDEFINED, 1f),
-                        GridLayout.spec(GridLayout.UNDEFINED, 1f),
-                    ).apply { width = 0; height = dp(48) }
-                })
-            }
+        recentsHeader = sectionLabel("Recents")
+        recentsGrid = emojiGrid()
+        val content = LinearLayout(context).apply {
+            orientation = VERTICAL
+            addView(recentsHeader)
+            addView(recentsGrid)
+            addView(emojiGrid().apply { EMOJIS.forEach { addView(emojiCell(it)) } })
         }
         addView(ScrollView(context).apply {
             layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, dp(ROW_HEIGHT_DP * 4))
-            addView(grid)
+            addView(content)
         })
         addView(row {
             addView(specialKey("ABC", weight = 1.5f) { switchTo(Page.LETTERS) })
             addView(spaceKey(weight = 5f))
             addView(backspaceKey(weight = 1.5f))
         })
+    }
+
+    private fun emojiGrid(): GridLayout = GridLayout(context).apply {
+        columnCount = EMOJI_COLUMNS
+        layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)
+    }
+
+    private fun emojiCell(emoji: String): Button =
+        key(emoji, textSizeSp = 26f, flat = true) {
+            recordRecentEmoji(emoji)
+            listener?.onText(emoji)
+        }.apply {
+            layoutParams = GridLayout.LayoutParams(
+                GridLayout.spec(GridLayout.UNDEFINED, 1f),
+                GridLayout.spec(GridLayout.UNDEFINED, 1f),
+            ).apply { width = 0; height = dp(48) }
+        }
+
+    private fun sectionLabel(text: String): TextView = TextView(context).apply {
+        this.text = text
+        setTextColor(palette.hint)
+        setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+        typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+        setPadding(dp(10), dp(6), 0, dp(2))
+    }
+
+    private fun refreshRecentEmojis() {
+        val grid = recentsGrid ?: return
+        val recents = loadRecentEmojis()
+        recentsHeader?.visibility = if (recents.isEmpty()) GONE else VISIBLE
+        grid.visibility = if (recents.isEmpty()) GONE else VISIBLE
+        grid.removeAllViews()
+        recents.forEach { grid.addView(emojiCell(it)) }
+    }
+
+    private fun loadRecentEmojis(): List<String> =
+        uiPrefs.getString(KEY_EMOJI_RECENTS, null)
+            ?.split('\n')?.filter { it.isNotEmpty() } ?: emptyList()
+
+    private fun recordRecentEmoji(emoji: String) {
+        val updated = (listOf(emoji) + loadRecentEmojis().filter { it != emoji })
+            .take(MAX_RECENT_EMOJIS)
+        uiPrefs.edit().putString(KEY_EMOJI_RECENTS, updated.joinToString("\n")).apply()
     }
 
     /** Shared bottom row: page switch, emoji, globe, comma, space, period, enter. */
@@ -856,6 +902,8 @@ class KeyboardView(context: Context) : LinearLayout(context) {
         const val SWIPE_START_DP = 24
         const val CURSOR_START_DP = 18
         const val CURSOR_STEP_DP = 14
+        const val MAX_RECENT_EMOJIS = 16
+        const val KEY_EMOJI_RECENTS = "emoji_recents"
 
         /** Long-press alternates per key. */
         val ALTERNATES = mapOf(
