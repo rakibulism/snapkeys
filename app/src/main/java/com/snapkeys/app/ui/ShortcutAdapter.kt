@@ -10,6 +10,7 @@ import com.snapkeys.app.databinding.ItemShortcutBinding
 class ShortcutAdapter(
     private val onClick: (Shortcut) -> Unit,
     private val onDelete: (Shortcut) -> Unit,
+    private val onToggle: (Shortcut, Boolean) -> Unit,
 ) : RecyclerView.Adapter<ShortcutAdapter.Holder>() {
 
     private val items = mutableListOf<Shortcut>()
@@ -39,6 +40,16 @@ class ShortcutAdapter(
         fun bind(shortcut: Shortcut) {
             binding.trigger.text = shortcut.trigger
             binding.expansion.text = shortcut.expansion
+            // Detach the listener before setting state: recycled rows would
+            // otherwise fire the previous shortcut's toggle.
+            binding.enabledSwitch.setOnCheckedChangeListener(null)
+            binding.enabledSwitch.isChecked = shortcut.enabled
+            binding.enabledSwitch.setOnCheckedChangeListener { _, checked ->
+                onToggle(shortcut, checked)
+            }
+            val alpha = if (shortcut.enabled) 1f else 0.4f
+            binding.trigger.alpha = alpha
+            binding.expansion.alpha = alpha
             binding.root.setOnClickListener { onClick(shortcut) }
             binding.deleteButton.setOnClickListener { onDelete(shortcut) }
         }

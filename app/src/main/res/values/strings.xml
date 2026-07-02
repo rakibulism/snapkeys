@@ -11,6 +11,7 @@
     <string name="hint_trigger">Trigger (e.g. brb)</string>
     <string name="hint_expansion">Expands to (e.g. be right back)</string>
     <string name="save">Save</string>
+    <string name="toggle_shortcut">Enable or disable this shortcut</string>
     <string name="delete">Delete</string>
     <string name="saved">Saved</string>
 

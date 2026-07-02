@@ -81,7 +81,7 @@ No client ID goes in the code — Google matches the app by package + signature.
 - [x] Swipe typing (v1: path matching against the dictionary)
 - [x] Case-preserving expansions (e.g. `Brb` → `Be right back`)
 - [ ] Import / export shortcuts
-- [ ] Per-shortcut enable toggle in the UI
+- [x] Per-shortcut enable toggle in the UI
 
 ## License
 

@@ -41,6 +41,12 @@ class MainActivity : AppCompatActivity() {
             onDelete = { shortcut ->
                 store.delete(shortcut.trigger)
                 refresh()
+                syncNow(silent = true)
+            },
+            onToggle = { shortcut, enabled ->
+                store.upsert(shortcut.copy(enabled = enabled))
+                refresh()
+                syncNow(silent = true)
             },
         )
 

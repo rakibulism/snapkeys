@@ -27,8 +27,18 @@
         android:textColor="?android:attr/textColorSecondary"
         app:layout_constraintTop_toBottomOf="@id/trigger"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toStartOf="@id/deleteButton"
+        app:layout_constraintEnd_toStartOf="@id/enabledSwitch"
         tools:text="be right back" />
+
+    <com.google.android.material.materialswitch.MaterialSwitch
+        android:id="@+id/enabledSwitch"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginEnd="8dp"
+        android:contentDescription="@string/toggle_shortcut"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toStartOf="@id/deleteButton" />
 
     <com.google.android.material.button.MaterialButton
         android:id="@+id/deleteButton"
