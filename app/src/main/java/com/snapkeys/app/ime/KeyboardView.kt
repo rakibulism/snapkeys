@@ -77,6 +77,12 @@ class KeyboardView(context: Context) : LinearLayout(context) {
 
         /** Toolbar mic tapped: hand off to the system voice keyboard. */
         fun onVoiceInput()
+
+        /** 🔍 tab on the emoji page: start typing an emoji search query. */
+        fun onEmojiSearchTapped()
+
+        /** Emoji search dismissed (✕). */
+        fun onEmojiSearchCancel()
     }
 
     var listener: Listener? = null
@@ -149,10 +155,16 @@ class KeyboardView(context: Context) : LinearLayout(context) {
     private var alternatesPopup: PopupWindow? = null
 
     // Emoji page: category tabs + recents persisted across sessions.
+    // Tab 0 = 🔍 search trigger, 1 = recents, 2.. = EmojiCatalog.CATEGORIES.
     private val uiPrefs = context.getSharedPreferences("snapkeys_ui", Context.MODE_PRIVATE)
     private var emojiContentGrid: GridLayout? = null
     private var emojiTabs: List<Button> = emptyList()
-    private var currentEmojiTab = 0 // 0 = recents, 1.. = EMOJI_CATEGORIES
+    private var currentEmojiTab = 1
+
+    // Emoji search strip in the toolbar.
+    private lateinit var searchBar: LinearLayout
+    private lateinit var searchQueryView: TextView
+    private lateinit var searchResults: LinearLayout
 
     // Swipe typing state: non-null while a gesture is in flight.
     private var swipePath: StringBuilder? = null
@@ -290,10 +302,61 @@ class KeyboardView(context: Context) : LinearLayout(context) {
             }, LayoutParams(0, LayoutParams.MATCH_PARENT, 1f))
             addView(flatBar("✓ Save", palette.accent) { listener?.onSnippetConfirm() })
         }
+        searchQueryView = TextView(context).apply {
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
+            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+            gravity = Gravity.CENTER_VERTICAL
+            isSingleLine = true
+        }
+        searchResults = LinearLayout(context).apply {
+            orientation = HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        searchBar = LinearLayout(context).apply {
+            orientation = HORIZONTAL
+            visibility = GONE
+            addView(flatBar("✕", palette.specialText) { listener?.onEmojiSearchCancel() })
+            addView(searchQueryView, LayoutParams(0, LayoutParams.MATCH_PARENT, 1f))
+            addView(searchResults)
+        }
         addView(normalBar, FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         addView(captureBar, FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+        addView(searchBar, FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         showSuggestions(emptyList())
     }
+
+    // region Emoji search mode
+
+    fun enterEmojiSearchMode() {
+        normalBar.visibility = GONE
+        captureBar.visibility = GONE
+        searchBar.visibility = VISIBLE
+        setEmojiSearch("", emptyList())
+        switchTo(Page.LETTERS)
+    }
+
+    fun setEmojiSearch(query: String, results: List<String>) {
+        searchQueryView.text = if (query.isEmpty()) "🔍 search emoji…" else "🔍 $query▏"
+        searchQueryView.setTextColor(if (query.isEmpty()) palette.hint else palette.keyText)
+        searchResults.removeAllViews()
+        results.take(MAX_SEARCH_RESULTS).forEach { emoji ->
+            searchResults.addView(
+                key(emoji, textSizeSp = 22f, flat = true) {
+                    recordRecentEmoji(emoji)
+                    listener?.onText(emoji)
+                }.apply {
+                    layoutParams = LayoutParams(dp(38), LayoutParams.MATCH_PARENT)
+                },
+            )
+        }
+    }
+
+    fun exitEmojiSearchMode() {
+        searchBar.visibility = GONE
+        normalBar.visibility = VISIBLE
+    }
+
+    // endregion
 
     private fun suggestionChip(text: String, index: Int): Button =
         Button(context, null, 0).apply {
@@ -371,7 +434,7 @@ class KeyboardView(context: Context) : LinearLayout(context) {
         pageContainer.addView(pages.getOrPut(page) { buildPage(page) })
         if (page == Page.EMOJI) {
             // Land on recents when there are any, else the first category.
-            val tab = if (currentEmojiTab == 0 && loadRecentEmojis().isEmpty()) 1 else currentEmojiTab
+            val tab = if (currentEmojiTab == 1 && loadRecentEmojis().isEmpty()) 2 else currentEmojiTab
             selectEmojiTab(tab)
         }
     }
@@ -426,7 +489,7 @@ class KeyboardView(context: Context) : LinearLayout(context) {
     }
 
     private fun buildEmojiPage(): LinearLayout = page {
-        val tabLabels = listOf("🕘") + EMOJI_CATEGORIES.map { it.first }
+        val tabLabels = listOf("🔍", "🕘") + EmojiCatalog.CATEGORIES.map { it.first }
         val tabStrip = LinearLayout(context).apply {
             orientation = HORIZONTAL
             layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, dp(EMOJI_TAB_HEIGHT_DP))
@@ -439,7 +502,9 @@ class KeyboardView(context: Context) : LinearLayout(context) {
                 setPadding(0, 0, 0, 0)
                 background = rippleOnly()
                 layoutParams = LayoutParams(0, LayoutParams.MATCH_PARENT, 1f)
-                setOnClickListener { selectEmojiTab(index) }
+                setOnClickListener {
+                    if (index == 0) listener?.onEmojiSearchTapped() else selectEmojiTab(index)
+                }
             }.also(tabStrip::addView)
         }
         emojiContentGrid = GridLayout(context).apply {
@@ -468,7 +533,8 @@ class KeyboardView(context: Context) : LinearLayout(context) {
         }
         val grid = emojiContentGrid ?: return
         grid.removeAllViews()
-        val emojis = if (index == 0) loadRecentEmojis() else EMOJI_CATEGORIES[index - 1].second
+        val emojis =
+            if (index == 1) loadRecentEmojis() else EmojiCatalog.CATEGORIES[index - 2].second
         emojis.forEach { grid.addView(emojiCell(it)) }
     }
 
@@ -927,6 +993,7 @@ class KeyboardView(context: Context) : LinearLayout(context) {
         const val MAX_RECENT_EMOJIS = 16
         const val KEY_EMOJI_RECENTS = "emoji_recents"
         const val EMOJI_TAB_HEIGHT_DP = 40
+        const val MAX_SEARCH_RESULTS = 6
 
         /** Long-press alternates per key. */
         val ALTERNATES = mapOf(
@@ -944,34 +1011,5 @@ class KeyboardView(context: Context) : LinearLayout(context) {
             '.' to "…?!,;:-",
         )
 
-        /** Tab icon → emojis. The recents tab (🕘) is prepended at build time. */
-        val EMOJI_CATEGORIES: List<Pair<String, List<String>>> = listOf(
-            "😀" to listOf(
-                "😀", "😁", "😂", "🤣", "😊", "😇", "🙂", "😉", "😍", "🥰", "😘", "😜",
-                "🤪", "🤔", "🤨", "😐", "😴", "🥱", "😎", "🥳", "😅", "😬", "🙄", "😢",
-                "😭", "😤", "😡", "🤯", "😱", "🤗", "🤫", "🤤", "😷", "🤒", "🥺", "😳",
-            ),
-            "👍" to listOf(
-                "👍", "👎", "👌", "✌️", "🤞", "🫶", "🤝", "👏", "🙌", "🙏", "💪", "👋",
-                "🤙", "👉", "👈", "👆", "👇", "🖐️", "✊", "🤘",
-            ),
-            "❤️" to listOf(
-                "❤️", "🧡", "💛", "💚", "💙", "💜", "🖤", "🤍", "💔", "❣️", "💕", "💯",
-                "✨", "🔥", "⭐", "🌈", "✅", "❌", "❓", "❗", "💡", "🔔",
-            ),
-            "🎉" to listOf(
-                "🎉", "🎂", "🎁", "🎵", "🎮", "⚽", "🏀", "🏆", "🎯", "🎬",
-            ),
-            "🐼" to listOf(
-                "🌹", "🌞", "🌙", "🌍", "🌊", "🐶", "🐱", "🐼", "🦊", "🐸", "🐵", "🦁",
-                "🙈", "🙉", "🙊", "🦄",
-            ),
-            "🍕" to listOf(
-                "☕", "🍕", "🍔", "🍟", "🍦", "🍫", "🍎", "🍌", "🥑", "🍩", "🍿", "🧋",
-            ),
-            "🚗" to listOf(
-                "🚗", "✈️", "🏠", "📱", "💻", "⌚", "📚", "💰", "🛒", "📷",
-            ),
-        )
     }
 }

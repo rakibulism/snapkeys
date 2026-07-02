@@ -45,6 +45,9 @@ class SnapKeysService : InputMethodService(), KeyboardView.Listener {
     // toolbar, so the chip disappears until something new is copied.
     private var consumedClip: String? = null
 
+    // Emoji search: while non-null, letters type a query in the toolbar.
+    private var emojiSearch: StringBuilder? = null
+
     override fun onCreate() {
         super.onCreate()
         reloadShortcuts()
@@ -72,6 +75,7 @@ class SnapKeysService : InputMethodService(), KeyboardView.Listener {
         if (keyboardView?.isStale() == true) setInputView(onCreateInputView())
         // A different field means the captured text is gone — drop the flow.
         if (snippetCapture != null) onSnippetCancel()
+        if (emojiSearch != null) onEmojiSearchCancel()
         afterEdit()
     }
 
@@ -97,6 +101,13 @@ class SnapKeysService : InputMethodService(), KeyboardView.Listener {
     // region KeyboardView.Listener
 
     override fun onCharacter(c: Char) {
+        emojiSearch?.let { query ->
+            if (c.isLetter() && query.length < MAX_EMOJI_QUERY) {
+                query.append(c.lowercaseChar())
+                refreshEmojiSearch()
+            }
+            return
+        }
         if (snippetCapture != null) {
             // Any visible character may be part of a trigger; whitespace
             // can't (space is inert here and enter confirms the capture).
@@ -132,6 +143,15 @@ class SnapKeysService : InputMethodService(), KeyboardView.Listener {
     }
 
     override fun onBackspace() {
+        emojiSearch?.let { query ->
+            if (query.isEmpty()) {
+                onEmojiSearchCancel()
+            } else {
+                query.setLength(query.length - 1)
+                refreshEmojiSearch()
+            }
+            return
+        }
         if (snippetCapture != null) {
             if (triggerBuffer.isNotEmpty()) {
                 val len = triggerBuffer.length
@@ -163,6 +183,10 @@ class SnapKeysService : InputMethodService(), KeyboardView.Listener {
     }
 
     override fun onEnter() {
+        if (emojiSearch != null) {
+            onEmojiSearchCancel()
+            return
+        }
         if (snippetCapture != null) {
             onSnippetConfirm()
             return
@@ -182,6 +206,7 @@ class SnapKeysService : InputMethodService(), KeyboardView.Listener {
     }
 
     override fun onSpace() {
+        if (emojiSearch != null) return
         if (snippetCapture == null && maybeDoubleSpacePeriod()) return
         onCharacter(' ')
     }
@@ -232,6 +257,22 @@ class SnapKeysService : InputMethodService(), KeyboardView.Listener {
 
     override fun onImePicker() {
         imm().showInputMethodPicker()
+    }
+
+    override fun onEmojiSearchTapped() {
+        emojiSearch = StringBuilder()
+        keyboardView?.enterEmojiSearchMode()
+    }
+
+    override fun onEmojiSearchCancel() {
+        emojiSearch = null
+        keyboardView?.exitEmojiSearchMode()
+        updateSuggestions()
+    }
+
+    private fun refreshEmojiSearch() {
+        val query = emojiSearch?.toString() ?: return
+        keyboardView?.setEmojiSearch(query, EmojiCatalog.search(query))
     }
 
     override fun onVoiceInput() {
@@ -367,7 +408,7 @@ class SnapKeysService : InputMethodService(), KeyboardView.Listener {
 
     private fun updateSuggestions() {
         val view = keyboardView ?: return
-        if (snippetCapture != null) return
+        if (snippetCapture != null || emojiSearch != null) return
         if (!KeyboardSettings.suggestions(this)) {
             currentSuggestions = emptyList()
             view.showSuggestions(emptyList())
@@ -449,6 +490,8 @@ class SnapKeysService : InputMethodService(), KeyboardView.Listener {
         private const val MAX_CLIP_LENGTH = 500
 
         private const val DOUBLE_SPACE_MS = 500L
+
+        private const val MAX_EMOJI_QUERY = 20
 
         private const val PREDICTOR_PREFS = "snapkeys_predictor"
         private const val KEY_LEARNED = "learned_words"

@@ -9,7 +9,7 @@ Type `brb` + space and it becomes `be right back`. Type `@@` and it becomes your
 ## Features
 
 **Typing**
-- QWERTY with optional number row, two symbol pages, and an emoji picker with recents
+- QWERTY with optional number row, two symbol pages, and an emoji picker with recents, category tabs, and search
 - Suggestion bar: your shortcut expansions, dictionary completions, and words learned from your typing
 - Swipe typing, long-press accent alternates, double-space period, auto-capitalization
 - Slide on the space bar to move the cursor; hold backspace to repeat; double-tap shift for caps lock
@@ -97,7 +97,6 @@ No client ID goes in the code — Google matches the app by package + signature.
 ## Roadmap
 
 - [ ] Smarter swipe typing (full language-model scoring; current: frequency-weighted path matching)
-- [ ] Emoji search
 - [ ] Custom themes (colors, key shapes, backgrounds)
 - [ ] Multilingual dictionaries and layouts
 - [ ] Play Store release (release signing, privacy policy, listing)
