@@ -2,6 +2,7 @@ package com.snapkeys.app.ime
 
 import android.inputmethodservice.InputMethodService
 import android.os.Build
+import android.view.KeyEvent
 import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
@@ -173,6 +174,15 @@ class SnapKeysService : InputMethodService(), KeyboardView.Listener {
     }
 
     override fun onSpace() = onCharacter(' ')
+
+    override fun onCursorMove(steps: Int) {
+        if (snippetCapture != null) return
+        // D-pad events move the cursor in any editor, including ones that
+        // don't support setSelection through the InputConnection.
+        val keyCode = if (steps > 0) KeyEvent.KEYCODE_DPAD_RIGHT else KeyEvent.KEYCODE_DPAD_LEFT
+        repeat(kotlin.math.abs(steps)) { sendDownUpKeyEvents(keyCode) }
+        afterEdit()
+    }
 
     override fun onSwitchIme() {
         val switched = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {

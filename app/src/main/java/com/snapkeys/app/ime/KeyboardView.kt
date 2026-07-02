@@ -71,6 +71,9 @@ class KeyboardView(context: Context) : LinearLayout(context) {
 
         /** A swipe across letter keys ended; [path] is the crossed keys. */
         fun onSwipe(path: String)
+
+        /** Slide-on-space cursor control: move the cursor by [steps] chars. */
+        fun onCursorMove(steps: Int)
     }
 
     var listener: Listener? = null
@@ -639,7 +642,62 @@ class KeyboardView(context: Context) : LinearLayout(context) {
             "SnapKeys", weight, textSizeSp = 13f,
             textColor = palette.hint,
             sound = SoundEffectConstants.NAVIGATION_DOWN,
-        ) { listener?.onSpace() }
+        ) { listener?.onSpace() }.also(::attachCursorControl)
+
+    /** Gboard's slide-on-space: horizontal drags move the cursor stepwise. */
+    @SuppressLint("ClickableViewAccessibility")
+    private fun attachCursorControl(space: Button) {
+        var downX = 0f
+        var lastStepX = 0f
+        var cursorMode = false
+        space.setOnTouchListener { view, event ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    downX = event.rawX
+                    lastStepX = event.rawX
+                    cursorMode = false
+                    view.onTouchEvent(event)
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    if (!cursorMode && kotlin.math.abs(event.rawX - downX) > dp(CURSOR_START_DP)) {
+                        cursorMode = true
+                        lastStepX = event.rawX
+                        // The drag owns the gesture now — a space must not
+                        // also be typed on finger-up.
+                        val cancel = MotionEvent.obtain(event)
+                        cancel.action = MotionEvent.ACTION_CANCEL
+                        view.onTouchEvent(cancel)
+                        cancel.recycle()
+                    }
+                    if (cursorMode) {
+                        val step = dp(CURSOR_STEP_DP).toFloat()
+                        var moved = 0
+                        while (event.rawX - lastStepX >= step) {
+                            moved++
+                            lastStepX += step
+                        }
+                        while (lastStepX - event.rawX >= step) {
+                            moved--
+                            lastStepX -= step
+                        }
+                        if (moved != 0) {
+                            performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                            listener?.onCursorMove(moved)
+                        }
+                        true
+                    } else {
+                        view.onTouchEvent(event)
+                    }
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    val wasDragging = cursorMode
+                    cursorMode = false
+                    if (wasDragging) true else view.onTouchEvent(event)
+                }
+                else -> view.onTouchEvent(event)
+            }
+        }
+    }
 
     private fun enterKey(weight: Float): Button =
         key(
@@ -796,6 +854,8 @@ class KeyboardView(context: Context) : LinearLayout(context) {
         const val BACKSPACE_REPEAT_MS = 60L
         const val MESSAGE_MS = 1800L
         const val SWIPE_START_DP = 24
+        const val CURSOR_START_DP = 18
+        const val CURSOR_STEP_DP = 14
 
         /** Long-press alternates per key. */
         val ALTERNATES = mapOf(
