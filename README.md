@@ -4,7 +4,28 @@ An Android keyboard that turns short **typo shortcuts** into full text — unive
 
 Type `brb` + space and it becomes `be right back`. Type `@@` and it becomes your email. Because SnapKeys is a system-wide keyboard (an Android *Input Method*), the expansions work everywhere — messaging apps, browsers, notes, forms — not just inside one app.
 
-> Status: early scaffold. The core expansion engine, storage, keyboard service, and management UI are in place. The on-screen key layout is intentionally minimal and meant to be extended.
+> Status: v0.2.0 — a full-featured keyboard. Gboard-style layout and behaviors, word prediction, swipe typing, emoji, encrypted cloud sync, and in-keyboard snippet capture.
+
+## Features
+
+**Typing**
+- QWERTY with optional number row, two symbol pages, and an emoji picker with recents
+- Suggestion bar: your shortcut expansions, dictionary completions, and words learned from your typing
+- Swipe typing, long-press accent alternates, double-space period, auto-capitalization
+- Slide on the space bar to move the cursor; hold backspace to repeat; double-tap shift for caps lock
+- Key preview bubbles, haptics, and key sounds, in Gboard's light/dark palettes following the system theme
+- Clipboard chip: copy anything, paste it with one tap from the toolbar
+
+**Text expansion**
+- Triggers expand everywhere, in any app; case-preserving (`Brb` → `Be right back`)
+- Triggers may contain special characters (`@@`, `!!`, `addr.`)
+- Save snippets right from the keyboard: tap 🔖, type a trigger, done
+- Per-shortcut enable toggle, import/export as JSON
+
+**Sync & privacy**
+- End-to-end-encrypted backup of shortcuts to Google Drive (see below)
+- The typing dictionary and learned words never leave the device
+- Keyboard settings (⚙️): sound, vibration, number row, suggestions, double-space period
 
 ### 📲 Download & install
 
@@ -74,15 +95,12 @@ No client ID goes in the code — Google matches the app by package + signature.
 
 ## Roadmap
 
-- [x] Symbols / numbers pages and emoji picker
-- [x] Long-press alternates on letter keys
-- [x] Themes (light/dark, key styling)
-- [x] Suggestion bar / inline autocomplete
-- [x] Swipe typing (v1: path matching against the dictionary)
-- [x] Case-preserving expansions (e.g. `Brb` → `Be right back`)
-- [x] Import / export shortcuts (plain JSON via the system file picker)
-- [x] Slide-on-space cursor control
-- [x] Per-shortcut enable toggle in the UI
+- [ ] Smarter swipe typing (language-model scoring instead of path matching)
+- [ ] Emoji search and category tabs
+- [ ] Custom themes (colors, key shapes, backgrounds)
+- [ ] Multilingual dictionaries and layouts
+- [ ] Voice input key
+- [ ] Play Store release (release signing, privacy policy, listing)
 
 ## License
 
