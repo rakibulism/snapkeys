@@ -68,6 +68,8 @@ class SnapKeysService : InputMethodService(), KeyboardView.Listener {
 
     override fun onStartInputView(editorInfo: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(editorInfo, restarting)
+        // Layout-affecting settings (number row) need a fresh view.
+        if (keyboardView?.isStale() == true) setInputView(onCreateInputView())
         // A different field means the captured text is gone — drop the flow.
         if (snippetCapture != null) onSnippetCancel()
         afterEdit()
@@ -188,6 +190,7 @@ class SnapKeysService : InputMethodService(), KeyboardView.Listener {
 
     /** Gboard reflex: two quick space taps after a word become ". ". */
     private fun maybeDoubleSpacePeriod(): Boolean {
+        if (!KeyboardSettings.doubleSpacePeriod(this)) return false
         val now = SystemClock.uptimeMillis()
         val quickSecondTap = now - lastSpaceAtMs < DOUBLE_SPACE_MS
         lastSpaceAtMs = now
@@ -345,6 +348,11 @@ class SnapKeysService : InputMethodService(), KeyboardView.Listener {
     private fun updateSuggestions() {
         val view = keyboardView ?: return
         if (snippetCapture != null) return
+        if (!KeyboardSettings.suggestions(this)) {
+            currentSuggestions = emptyList()
+            view.showSuggestions(emptyList())
+            return
+        }
         val ic = currentInputConnection
         val word = if (ic != null) trailingWord(ic.getTextBeforeCursor(32, 0) ?: "") else ""
         currentSuggestions = if (word.isEmpty()) {

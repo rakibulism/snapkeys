@@ -28,6 +28,11 @@
             android:exported="false"
             android:label="@string/title_edit_shortcut" />
 
+        <activity
+            android:name=".ui.SettingsActivity"
+            android:exported="false"
+            android:label="@string/settings" />
+
         <!-- The system-wide keyboard. Enabled by the user in
              Settings > System > Languages & input > On-screen keyboard. -->
         <service

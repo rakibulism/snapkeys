@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="16dp"
+        android:text="@string/settings"
+        android:textAppearance="?attr/textAppearanceHeadlineSmall" />
+
+    <com.google.android.material.materialswitch.MaterialSwitch
+        android:id="@+id/soundSwitch"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingVertical="12dp"
+        android:text="@string/settings_key_sound" />
+
+    <com.google.android.material.materialswitch.MaterialSwitch
+        android:id="@+id/vibrationSwitch"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingVertical="12dp"
+        android:text="@string/settings_vibration" />
+
+    <com.google.android.material.materialswitch.MaterialSwitch
+        android:id="@+id/numberRowSwitch"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingVertical="12dp"
+        android:text="@string/settings_number_row" />
+
+    <com.google.android.material.materialswitch.MaterialSwitch
+        android:id="@+id/suggestionsSwitch"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingVertical="12dp"
+        android:text="@string/settings_suggestions" />
+
+    <com.google.android.material.materialswitch.MaterialSwitch
+        android:id="@+id/doubleSpaceSwitch"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingVertical="12dp"
+        android:text="@string/settings_double_space" />
+
+</LinearLayout>

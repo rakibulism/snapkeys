@@ -80,6 +80,9 @@ class MainActivity : AppCompatActivity() {
         binding.exportButton.setOnClickListener {
             exportLauncher.launch("snapkeys-shortcuts.json")
         }
+        binding.settingsButton.setOnClickListener {
+            startActivity(Intent(this, SettingsActivity::class.java))
+        }
         binding.importButton.setOnClickListener {
             importLauncher.launch(arrayOf("application/json", "text/plain", "application/octet-stream"))
         }

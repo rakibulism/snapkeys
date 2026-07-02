@@ -32,6 +32,14 @@
     <string name="sync_sign_out">Sign out</string>
     <string name="cancel">Cancel</string>
 
+    <string name="settings">Keyboard settings</string>
+    <string name="settings_button">⚙️</string>
+    <string name="settings_key_sound">Key press sound</string>
+    <string name="settings_vibration">Vibration on keypress</string>
+    <string name="settings_number_row">Number row</string>
+    <string name="settings_suggestions">Suggestion bar</string>
+    <string name="settings_double_space">Double-space inserts a period</string>
+
     <string name="import_shortcuts">Import</string>
     <string name="export_shortcuts">Export</string>
     <string name="export_done">Exported %1$d shortcuts</string>

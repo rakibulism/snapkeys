@@ -382,8 +382,14 @@ class KeyboardView(context: Context) : LinearLayout(context) {
         Page.EMOJI -> buildEmojiPage()
     }
 
+    /** Number-row setting captured at build time; a change needs a rebuild. */
+    private val builtWithNumberRow = KeyboardSettings.numberRow(context)
+
+    /** True when a settings change requires recreating the view. */
+    fun isStale(): Boolean = builtWithNumberRow != KeyboardSettings.numberRow(context)
+
     private fun buildLettersPage(): LinearLayout = page {
-        addView(charRow("1234567890"))
+        if (builtWithNumberRow) addView(charRow("1234567890"))
         addView(charRow("qwertyuiop", trackShift = true))
         addView(charRow("asdfghjkl", trackShift = true, sidePad = 0.5f))
         addView(row {
@@ -804,8 +810,10 @@ class KeyboardView(context: Context) : LinearLayout(context) {
         layoutParams = LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, weight)
             .apply { setMargins(h, v, h, v) }
         setOnClickListener {
-            performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-            playSoundEffect(sound)
+            if (KeyboardSettings.vibration(context)) {
+                performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+            }
+            if (KeyboardSettings.sound(context)) playSoundEffect(sound)
             onClick()
         }
         if (showPreview || swipeChar != null) {
