@@ -248,7 +248,7 @@ class SnapKeysService : InputMethodService(), KeyboardView.Listener {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             switchInputMethod(voice.id, subtype)
         } else {
-            val token = window?.window?.attributes?.token
+            val token = window?.window?.attributes?.token ?: return
             @Suppress("DEPRECATION")
             imm().setInputMethodAndSubtype(token, voice.id, subtype)
         }
