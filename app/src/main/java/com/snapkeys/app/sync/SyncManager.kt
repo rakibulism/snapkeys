@@ -2,6 +2,8 @@ package com.snapkeys.app.sync
 
 import android.content.Context
 import android.content.SharedPreferences
+import androidx.security.crypto.EncryptedSharedPreferences
+import androidx.security.crypto.MasterKey
 import com.google.android.gms.auth.GoogleAuthUtil
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInAccount
@@ -93,6 +95,7 @@ class SyncManager private constructor(
     companion object {
         const val SCOPE_APPDATA = "https://www.googleapis.com/auth/drive.appdata"
         private const val PREFS_NAME = "snapkeys_sync"
+        private const val SECURE_PREFS_NAME = "snapkeys_sync_secure"
         private const val KEY_PASSPHRASE = "sync_passphrase"
 
         private val executor = Executors.newSingleThreadExecutor()
@@ -100,10 +103,46 @@ class SyncManager private constructor(
         @Volatile private var instance: SyncManager? = null
 
         fun get(context: Context): SyncManager = instance ?: synchronized(this) {
-            instance ?: SyncManager(
-                context.applicationContext,
-                context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE),
-            ).also { instance = it }
+            instance ?: run {
+                val appContext = context.applicationContext
+                val prefs = createPrefs(appContext)
+                migrateLegacyPassphrase(appContext, prefs)
+                SyncManager(appContext, prefs).also { instance = it }
+            }
+        }
+
+        /**
+         * Android Keystore-backed storage for the passphrase, so it isn't
+         * readable from a device backup or filesystem dump. Falls back to
+         * plain app-private prefs on the rare device whose keystore is
+         * broken — sync still works there, just without the extra layer.
+         */
+        private fun createPrefs(context: Context): SharedPreferences =
+            runCatching {
+                val masterKey = MasterKey.Builder(context)
+                    .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+                    .build()
+                EncryptedSharedPreferences.create(
+                    context,
+                    SECURE_PREFS_NAME,
+                    masterKey,
+                    EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                    EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
+                )
+            }.getOrElse {
+                context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            }
+
+        /** One-time move of a passphrase saved by older builds in plain prefs. */
+        private fun migrateLegacyPassphrase(context: Context, secure: SharedPreferences) {
+            val legacy = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            if (secure === legacy) return // keystore fallback — nothing to move
+            legacy.getString(KEY_PASSPHRASE, null)?.let { passphrase ->
+                if (!secure.contains(KEY_PASSPHRASE)) {
+                    secure.edit().putString(KEY_PASSPHRASE, passphrase).apply()
+                }
+                legacy.edit().remove(KEY_PASSPHRASE).apply()
+            }
         }
     }
 }
