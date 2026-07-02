@@ -8,9 +8,7 @@ import com.google.android.gms.auth.api.signin.GoogleSignInAccount
 import com.google.android.gms.auth.api.signin.GoogleSignInClient
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import com.google.android.gms.common.api.Scope
-import com.snapkeys.app.data.Shortcut
 import com.snapkeys.app.data.ShortcutStore
-import org.json.JSONArray
 import java.util.concurrent.Executors
 
 /**
@@ -76,7 +74,7 @@ class SyncManager private constructor(
         val localModifiedAt = store.modifiedAt()
         return when {
             remote == null || localModifiedAt > remote.modifiedAtMillis -> {
-                val plain = toJson(store.load()).toByteArray()
+                val plain = ShortcutStore.encode(store.load()).toByteArray()
                 val encrypted = SyncCrypto.encrypt(plain, passphrase.toCharArray())
                 val uploadedAt = drive.upload(remote?.id, encrypted)
                 store.markSynced(uploadedAt)
@@ -84,23 +82,12 @@ class SyncManager private constructor(
             }
             remote.modifiedAtMillis > localModifiedAt -> {
                 val plain = SyncCrypto.decrypt(drive.download(remote.id), passphrase.toCharArray())
-                val shortcuts = fromJson(plain.decodeToString())
+                val shortcuts = ShortcutStore.decode(plain.decodeToString())
                 store.replaceAll(shortcuts, remote.modifiedAtMillis)
                 "Restored ${shortcuts.size} shortcuts from Google Drive"
             }
             else -> "Already in sync"
         }
-    }
-
-    private fun toJson(shortcuts: List<Shortcut>): String {
-        val array = JSONArray()
-        shortcuts.forEach { array.put(it.toJson()) }
-        return array.toString()
-    }
-
-    private fun fromJson(raw: String): List<Shortcut> {
-        val array = JSONArray(raw)
-        return (0 until array.length()).map { Shortcut.fromJson(array.getJSONObject(it)) }
     }
 
     companion object {

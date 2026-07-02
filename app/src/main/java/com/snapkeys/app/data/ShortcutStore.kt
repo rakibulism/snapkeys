@@ -15,10 +15,7 @@ class ShortcutStore private constructor(private val prefs: SharedPreferences) {
 
     fun load(): List<Shortcut> {
         val raw = prefs.getString(KEY_SHORTCUTS, null) ?: return defaults()
-        return runCatching {
-            val array = JSONArray(raw)
-            (0 until array.length()).map { Shortcut.fromJson(array.getJSONObject(it)) }
-        }.getOrElse { defaults() }
+        return runCatching { decode(raw) }.getOrElse { defaults() }
     }
 
     fun save(shortcuts: List<Shortcut>) {
@@ -39,10 +36,8 @@ class ShortcutStore private constructor(private val prefs: SharedPreferences) {
     }
 
     private fun write(shortcuts: List<Shortcut>, modifiedAt: Long) {
-        val array = JSONArray()
-        shortcuts.forEach { array.put(it.toJson()) }
         prefs.edit()
-            .putString(KEY_SHORTCUTS, array.toString())
+            .putString(KEY_SHORTCUTS, encode(shortcuts))
             .putLong(KEY_MODIFIED_AT, modifiedAt)
             .apply()
     }
@@ -70,6 +65,20 @@ class ShortcutStore private constructor(private val prefs: SharedPreferences) {
         private const val PREFS_NAME = "snapkeys_shortcuts"
         private const val KEY_SHORTCUTS = "shortcuts_json"
         private const val KEY_MODIFIED_AT = "shortcuts_modified_at"
+
+        /** The interchange format: a plain JSON array, used by storage,
+         *  Drive sync, and import/export alike. */
+        fun encode(shortcuts: List<Shortcut>): String {
+            val array = JSONArray()
+            shortcuts.forEach { array.put(it.toJson()) }
+            return array.toString()
+        }
+
+        /** @throws org.json.JSONException when [raw] isn't a shortcut list */
+        fun decode(raw: String): List<Shortcut> {
+            val array = JSONArray(raw)
+            return (0 until array.length()).map { Shortcut.fromJson(array.getJSONObject(it)) }
+        }
 
         fun get(context: Context): ShortcutStore {
             val prefs = context.applicationContext

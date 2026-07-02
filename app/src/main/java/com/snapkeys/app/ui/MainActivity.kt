@@ -1,6 +1,7 @@
 package com.snapkeys.app.ui
 
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
 import android.text.InputType
@@ -8,6 +9,7 @@ import android.view.View
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -29,6 +31,16 @@ class MainActivity : AppCompatActivity() {
     private lateinit var store: ShortcutStore
     private lateinit var adapter: ShortcutAdapter
     private lateinit var sync: SyncManager
+
+    private val exportLauncher =
+        registerForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+            uri?.let(::exportTo)
+        }
+
+    private val importLauncher =
+        registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            uri?.let(::importFrom)
+        }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -63,6 +75,45 @@ class MainActivity : AppCompatActivity() {
         binding.syncButton.setOnLongClickListener {
             if (sync.account != null) confirmSignOut()
             true
+        }
+
+        binding.exportButton.setOnClickListener {
+            exportLauncher.launch("snapkeys-shortcuts.json")
+        }
+        binding.importButton.setOnClickListener {
+            importLauncher.launch(arrayOf("application/json", "text/plain", "application/octet-stream"))
+        }
+    }
+
+    private fun exportTo(uri: Uri) {
+        val shortcuts = store.load()
+        runCatching {
+            contentResolver.openOutputStream(uri)?.use { stream ->
+                stream.write(ShortcutStore.encode(shortcuts).toByteArray())
+            } ?: error("Cannot open destination")
+        }.onSuccess {
+            Toast.makeText(this, getString(R.string.export_done, shortcuts.size), Toast.LENGTH_SHORT).show()
+        }.onFailure {
+            Toast.makeText(this, "Export failed: ${it.message}", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun importFrom(uri: Uri) {
+        runCatching {
+            val raw = contentResolver.openInputStream(uri)?.use { stream ->
+                stream.bufferedReader().readText()
+            } ?: error("Cannot open file")
+            ShortcutStore.decode(raw)
+        }.onSuccess { imported ->
+            // Merge by trigger; the imported file wins on conflicts.
+            val merged = store.load().associateBy { it.trigger.lowercase() } +
+                imported.associateBy { it.trigger.lowercase() }
+            store.save(merged.values.toList())
+            refresh()
+            syncNow(silent = true)
+            Toast.makeText(this, getString(R.string.import_done, imported.size), Toast.LENGTH_SHORT).show()
+        }.onFailure {
+            Toast.makeText(this, R.string.import_failed, Toast.LENGTH_LONG).show()
         }
     }
 

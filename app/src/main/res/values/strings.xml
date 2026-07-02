@@ -31,4 +31,10 @@
     <string name="sync_sign_out_message">This signs out on this device only. Shortcuts stay here, and the encrypted backup stays in your Google Drive.</string>
     <string name="sync_sign_out">Sign out</string>
     <string name="cancel">Cancel</string>
+
+    <string name="import_shortcuts">Import</string>
+    <string name="export_shortcuts">Export</string>
+    <string name="export_done">Exported %1$d shortcuts</string>
+    <string name="import_done">Imported %1$d shortcuts</string>
+    <string name="import_failed">Import failed — not a shortcuts file</string>
 </resources>

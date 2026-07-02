@@ -80,7 +80,7 @@ No client ID goes in the code — Google matches the app by package + signature.
 - [x] Suggestion bar / inline autocomplete
 - [x] Swipe typing (v1: path matching against the dictionary)
 - [x] Case-preserving expansions (e.g. `Brb` → `Be right back`)
-- [ ] Import / export shortcuts
+- [x] Import / export shortcuts (plain JSON via the system file picker)
 - [x] Per-shortcut enable toggle in the UI
 
 ## License

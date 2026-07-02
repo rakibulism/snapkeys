@@ -40,6 +40,20 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="@string/sync_sign_in" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/importButton"
+            style="@style/Widget.Material3.Button.TextButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/import_shortcuts" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/exportButton"
+            style="@style/Widget.Material3.Button.TextButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/export_shortcuts" />
     </LinearLayout>
 
     <TextView
