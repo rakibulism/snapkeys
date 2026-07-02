@@ -79,7 +79,7 @@ No client ID goes in the code — Google matches the app by package + signature.
 - [x] Themes (light/dark, key styling)
 - [x] Suggestion bar / inline autocomplete
 - [x] Swipe typing (v1: path matching against the dictionary)
-- [ ] Case-preserving expansions (e.g. `Brb` → `Be right back`)
+- [x] Case-preserving expansions (e.g. `Brb` → `Be right back`)
 - [ ] Import / export shortcuts
 - [ ] Per-shortcut enable toggle in the UI
 

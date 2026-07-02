@@ -49,10 +49,28 @@ class ExpansionEngine(shortcuts: List<Shortcut>) {
             if (match.trigger.first().isLetterOrDigit() &&
                 start > 0 && !isDelimiter(textBeforeCursor[start - 1])
             ) continue
-            val insert = if (delimiter != null) match.expansion + delimiter else match.expansion
+            val expansion = applyCase(candidate, match)
+            val insert = if (delimiter != null) expansion + delimiter else expansion
             return Expansion(deleteBefore = length, insert = insert)
         }
         return null
+    }
+
+    /**
+     * Mirror the typed trigger's capitalization onto the expansion:
+     * `brb` → as stored, `Brb` → `Be right back`, `BRB` → `BE RIGHT BACK`.
+     * Typing the trigger exactly as stored keeps the expansion as stored,
+     * so deliberate casing (names, emails) survives.
+     */
+    private fun applyCase(typed: String, match: Shortcut): String {
+        val letters = typed.filter { it.isLetter() }
+        return when {
+            typed == match.trigger || letters.isEmpty() -> match.expansion
+            letters.length > 1 && letters.all { it.isUpperCase() } -> match.expansion.uppercase()
+            typed.first().isUpperCase() ->
+                match.expansion.replaceFirstChar { it.uppercaseChar() }
+            else -> match.expansion
+        }
     }
 
     companion object {

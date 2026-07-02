@@ -33,9 +33,27 @@ class ExpansionEngineTest {
     }
 
     @Test
-    fun `matches case-insensitively`() {
+    fun `capitalized trigger capitalizes the expansion`() {
+        val result = engine.onDelimiter("Brb", ' ')
+        assertEquals("Be right back ", result?.insert)
+    }
+
+    @Test
+    fun `all-caps trigger uppercases the expansion`() {
         val result = engine.onDelimiter("BRB", ' ')
+        assertEquals("BE RIGHT BACK ", result?.insert)
+    }
+
+    @Test
+    fun `lowercase trigger keeps the expansion as stored`() {
+        val result = engine.onDelimiter("brb", ' ')
         assertEquals("be right back ", result?.insert)
+    }
+
+    @Test
+    fun `symbol trigger never changes expansion case`() {
+        val result = engine.onDelimiter("@@", ' ')
+        assertEquals("your.email@example.com ", result?.insert)
     }
 
     @Test
