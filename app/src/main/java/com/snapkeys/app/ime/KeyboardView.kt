@@ -74,6 +74,9 @@ class KeyboardView(context: Context) : LinearLayout(context) {
 
         /** Slide-on-space cursor control: move the cursor by [steps] chars. */
         fun onCursorMove(steps: Int)
+
+        /** Toolbar mic tapped: hand off to the system voice keyboard. */
+        fun onVoiceInput()
     }
 
     var listener: Listener? = null
@@ -261,6 +264,7 @@ class KeyboardView(context: Context) : LinearLayout(context) {
         normalBar = LinearLayout(context).apply {
             orientation = HORIZONTAL
             addView(suggestionArea, LayoutParams(0, LayoutParams.MATCH_PARENT, 1f))
+            addView(flatBar("🎤", palette.specialText) { listener?.onVoiceInput() })
             addView(saveSnippetButton)
         }
         captureBar = LinearLayout(context).apply {

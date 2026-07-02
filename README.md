@@ -15,6 +15,7 @@ Type `brb` + space and it becomes `be right back`. Type `@@` and it becomes your
 - Slide on the space bar to move the cursor; hold backspace to repeat; double-tap shift for caps lock
 - Key preview bubbles, haptics, and key sounds, in Gboard's light/dark palettes following the system theme
 - Clipboard chip: copy anything, paste it with one tap from the toolbar
+- Voice typing: 🎤 in the toolbar hands off to the system voice keyboard
 
 **Text expansion**
 - Triggers expand everywhere, in any app; case-preserving (`Brb` → `Be right back`)
@@ -99,7 +100,6 @@ No client ID goes in the code — Google matches the app by package + signature.
 - [ ] Emoji search
 - [ ] Custom themes (colors, key shapes, backgrounds)
 - [ ] Multilingual dictionaries and layouts
-- [ ] Voice input key
 - [ ] Play Store release (release signing, privacy policy, listing)
 
 ## License

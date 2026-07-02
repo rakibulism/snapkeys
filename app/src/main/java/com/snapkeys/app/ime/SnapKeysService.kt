@@ -234,6 +234,26 @@ class SnapKeysService : InputMethodService(), KeyboardView.Listener {
         imm().showInputMethodPicker()
     }
 
+    override fun onVoiceInput() {
+        val voice = imm().enabledInputMethodList.firstOrNull { info ->
+            (0 until info.subtypeCount).any { info.getSubtypeAt(it).mode == "voice" }
+        }
+        if (voice == null) {
+            keyboardView?.flashToolbarMessage("No voice keyboard available — install Google voice typing")
+            return
+        }
+        val subtype = (0 until voice.subtypeCount)
+            .map { voice.getSubtypeAt(it) }
+            .first { it.mode == "voice" }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            switchInputMethod(voice.id, subtype)
+        } else {
+            val token = window?.window?.attributes?.token
+            @Suppress("DEPRECATION")
+            imm().setInputMethodAndSubtype(token, voice.id, subtype)
+        }
+    }
+
     override fun onSaveSnippetTapped() {
         val ic = currentInputConnection ?: return
         // Prefer an explicit selection; fall back to the line being written.
